@@ -80,7 +80,7 @@ function onPosition(pos) {
           body: `${result.suburb || result.address.split(',')[0]} — Score ${result.score}/100`,
         })
         if (Notification.permission === 'granted')
-          new Notification('MotoApp — Área de Risco', {
+          new Notification('EasyDrive — Área de Risco', {
             body: `Área de PERIGO (score ${result.score}/100)`,
           })
       }

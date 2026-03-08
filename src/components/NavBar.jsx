@@ -1,10 +1,11 @@
-import { LayoutDashboard, Navigation, History, Settings, Bell } from 'lucide-react'
+import { LayoutDashboard, Navigation, History, Settings, BarChart2 } from 'lucide-react'
 import { useStore } from '../store'
 
 const tabs = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Início' },
   { id: 'trip', icon: Navigation, label: 'Viagem' },
   { id: 'history', icon: History, label: 'Histórico' },
+  { id: 'stats', icon: BarChart2, label: 'Gráficos' },
   { id: 'settings', icon: Settings, label: 'Config' },
 ]
 

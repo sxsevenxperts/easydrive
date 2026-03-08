@@ -1,13 +1,14 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useStore } from '../store'
 import { useTimer } from '../hooks/useTimer'
 import { fmt } from '../utils/format'
 import SafetyCard from '../components/SafetyCard'
 import RouteMap from '../components/RouteMap'
 import { reverseGeocode } from '../utils/safety'
+import { parseRideText } from '../utils/rideParser'
 import {
   Navigation, MapPin, Flag, Play, Pause, Square,
-  Fuel, Clock, Search, Loader, CheckCircle
+  Fuel, Clock, Search, Loader, CheckCircle, Clipboard, X
 } from 'lucide-react'
 
 const PLATFORMS = [
@@ -28,7 +29,7 @@ async function searchAddress(query) {
   return await res.json()
 }
 
-export default function ActiveTrip() {
+export default function ActiveTrip({ sharedRide }) {
   const {
     tripStatus, activeTrip, settings, currentLocation,
     startWaiting, startTrip, pauseTrip, resumeTrip,
@@ -41,15 +42,73 @@ export default function ActiveTrip() {
   const [showFinish, setShowFinish] = useState(false)
   const [platform, setPlatform] = useState('uber')
 
+  // Detecção automática via clipboard / share
+  const [detectedRide, setDetectedRide] = useState(sharedRide || null)
+  const [showPasteModal, setShowPasteModal] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+
   // Busca de destino
   const [destQuery, setDestQuery] = useState('')
   const [destResults, setDestResults] = useState([])
   const [destSearching, setDestSearching] = useState(false)
   const searchTimeout = useRef(null)
 
+  // Monitora clipboard quando usuário retorna do Uber/99
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const text = await navigator.clipboard.readText()
+        const parsed = parseRideText(text)
+        if (parsed) setDetectedRide(parsed)
+      } catch {}
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
+
   const fuelCost = activeTrip
     ? (activeTrip.km / settings.fuelConsumption) * settings.fuelPrice
     : 0
+
+  // Aplica corrida detectada (preenche origem + destino)
+  const applyDetectedRide = useCallback(() => {
+    if (!detectedRide) return
+    if (detectedRide.pickup) {
+      // Geocodifica a origem detectada
+      import('../utils/safety').then(({ reverseGeocode: _, getNearbyPOIs: __ }) => {})
+      fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(detectedRide.pickup)}&limit=1&countrycodes=br`,
+        { headers: { 'Accept-Language': 'pt-BR' } }
+      ).then((r) => r.json()).then((results) => {
+        if (results[0]) {
+          setPickup({
+            lat: parseFloat(results[0].lat),
+            lon: parseFloat(results[0].lon),
+            address: detectedRide.pickup,
+          })
+        }
+      }).catch(() => {})
+    }
+    if (detectedRide.dest) {
+      setDestQuery(detectedRide.dest)
+      fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(detectedRide.dest)}&limit=4&countrycodes=br`,
+        { headers: { 'Accept-Language': 'pt-BR' } }
+      ).then((r) => r.json()).then(setDestResults).catch(() => {})
+    }
+    setDetectedRide(null)
+  }, [detectedRide, setPickup])
+
+  // Processa texto colado manualmente
+  const handlePasteSubmit = () => {
+    const parsed = parseRideText(pasteText)
+    if (parsed) {
+      setDetectedRide(parsed)
+      setShowPasteModal(false)
+      setPasteText('')
+    }
+  }
 
   const handleFinish = () => {
     const value = parseFloat(earningsInput.replace(',', '.')) || 0
@@ -150,6 +209,42 @@ export default function ActiveTrip() {
           )}
         </div>
 
+        {/* Corrida detectada via clipboard / share */}
+        {detectedRide && (
+          <div style={{
+            background: '#3b82f615', border: '1px solid #3b82f6',
+            borderRadius: 12, padding: '12px 14px', marginBottom: 16,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Clipboard size={14} color='#3b82f6' />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#3b82f6' }}>Corrida detectada!</span>
+              <button onClick={() => setDetectedRide(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}>
+                <X size={14} />
+              </button>
+            </div>
+            {detectedRide.pickup && (
+              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+                📍 <strong>Origem:</strong> {detectedRide.pickup}
+              </p>
+            )}
+            {detectedRide.dest && (
+              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+                🏁 <strong>Destino:</strong> {detectedRide.dest}
+              </p>
+            )}
+            <button
+              onClick={applyDetectedRide}
+              style={{
+                width: '100%', padding: '9px', background: '#3b82f6',
+                border: 'none', borderRadius: 8, color: '#fff',
+                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Usar esses endereços
+            </button>
+          </div>
+        )}
+
         {/* GPS status */}
         {currentLocation && (
           <div style={{
@@ -180,15 +275,74 @@ export default function ActiveTrip() {
 
         <SafetyCard />
 
+        {/* Colar texto do Uber/99 */}
+        <button
+          onClick={() => setShowPasteModal(true)}
+          style={{
+            width: '100%', padding: '12px',
+            background: 'none', border: '1px dashed #334155',
+            borderRadius: 12, color: '#64748b',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            cursor: 'pointer', fontSize: 14, marginBottom: 16,
+          }}
+        >
+          <Clipboard size={16} />
+          Colar detalhes do pedido (Uber / 99)
+        </button>
+
         <div style={{
-          marginTop: 16, padding: 14, background: '#1e293b', borderRadius: 12,
+          padding: 14, background: '#1e293b', borderRadius: 12,
           border: '1px solid #334155',
         }}>
           <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
-            💡 <strong style={{ color: '#f1f5f9' }}>Como usar:</strong> Aceite a corrida no Uber/99 → volte aqui → toque "Iniciar". 
-            O app detecta sua posição atual como origem, rastreia todo o trajeto, calcula combustível e monitora a segurança da rota em tempo real.
+            💡 <strong style={{ color: '#f1f5f9' }}>Como usar:</strong> Aceite a corrida no Uber/99 → copie o texto do pedido → volte aqui → cole usando o botão acima. Ou simplesmente toque "Iniciar" para detectar a origem pelo GPS automaticamente.
           </p>
         </div>
+
+        {/* Modal colar texto */}
+        {showPasteModal && (
+          <div style={{
+            position: 'fixed', inset: 0, background: '#000a',
+            display: 'flex', alignItems: 'flex-end', zIndex: 200,
+          }}>
+            <div style={{
+              background: '#1e293b', borderRadius: '20px 20px 0 0',
+              padding: '24px 20px', width: '100%',
+              paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+            }}>
+              <h3 style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>Colar detalhes do pedido</h3>
+              <p style={{ fontSize: 13, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>
+                Copie o texto do pedido no Uber ou 99 e cole abaixo. O app vai extrair a origem e o destino automaticamente.
+              </p>
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={'Cole o texto aqui...\nEx: Buscar em Rua das Flores, 123\nDestino: Shopping Iguatemi'}
+                rows={5}
+                style={{
+                  width: '100%', background: '#0f172a', border: '1px solid #334155',
+                  borderRadius: 10, padding: 12, color: '#f1f5f9',
+                  fontSize: 14, resize: 'none', outline: 'none', boxSizing: 'border-box',
+                  marginBottom: 14,
+                }}
+              />
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => { setShowPasteModal(false); setPasteText('') }}
+                  style={{ flex: 1, padding: 12, background: '#334155', border: 'none', borderRadius: 10, color: '#94a3b8', cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handlePasteSubmit}
+                  style={{ flex: 2, padding: 12, background: '#3b82f6', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Detectar endereços
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
       </div>

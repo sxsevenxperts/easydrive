@@ -19,7 +19,7 @@ export default function Dashboard({ onTab }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#f1f5f9' }}>
-            {settings.name ? `Olá, ${settings.name.split(' ')[0]}` : 'MotoApp'}
+            {settings.name ? `Olá, ${settings.name.split(' ')[0]}` : 'EasyDrive'}
           </h1>
           <p style={{ fontSize: 12, color: '#64748b' }}>
             {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
