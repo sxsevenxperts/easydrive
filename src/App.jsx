@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useGPS } from './hooks/useGPS'
+import { useTheme } from './hooks/useTheme'
 import { useStore } from './store'
 import { supabase } from './lib/supabase'
 import NavBar from './components/NavBar'
@@ -31,6 +32,7 @@ function MainApp({ sharedRide }) {
   const { trips, settings, expenses, safetyScore } = useStore()
   const prevAchievementsRef = useRef(null)
   const streakNotifiedRef = useRef(null)
+  useTheme()
   useGPS()
 
   // Registra SW uma vez
@@ -82,7 +84,7 @@ function MainApp({ sharedRide }) {
   }, [trips, settings])
 
   return (
-    <div style={{ background: '#0f172a', minHeight: '100dvh', color: '#f1f5f9' }}>
+    <div style={{ background: 'var(--bg)', minHeight: '100dvh', color: 'var(--text)' }}>
       <div style={{
         maxWidth: 480, margin: '0 auto',
         paddingTop: 'env(safe-area-inset-top)',

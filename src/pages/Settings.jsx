@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
+import { useTheme } from '../hooks/useTheme'
 import { fmt } from '../utils/format'
-import { Save, Fuel, User, Car, DollarSign, Download, Target, Bell, BellOff } from 'lucide-react'
+import { Save, Fuel, User, Car, DollarSign, Download, Target, Bell, BellOff, Sun, Moon, Monitor } from 'lucide-react'
 import {
   getPermissionStatus,
   requestNotificationPermission,
@@ -21,6 +22,7 @@ const ALL_PLATFORMS = [
 
 export default function Settings() {
   const { settings, updateSettings, trips, expenses } = useStore()
+  const { theme, setTheme } = useTheme()
   const [saved, setSaved] = useState(false)
   const [form, setForm] = useState({ ...settings })
   const [notifStatus, setNotifStatus] = useState(getPermissionStatus())
@@ -56,6 +58,32 @@ export default function Settings() {
   return (
     <div style={{ padding: '16px 16px 90px' }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 20 }}>Configurações</h1>
+
+      {/* ═══════ TEMA ═══════ */}
+      <Section icon={<Monitor size={16} color='#3b82f6' />} title='Aparência'>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          {[
+            { id: 'dark',   label: 'Dark',    icon: <Moon size={16} /> },
+            { id: 'light',  label: 'Normal',  icon: <Sun size={16} /> },
+            { id: 'system', label: 'Sistema', icon: <Monitor size={16} /> },
+          ].map((t) => {
+            const active = theme === t.id
+            return (
+              <button key={t.id} onClick={() => setTheme(t.id)} style={{
+                padding: '12px 0',
+                background: active ? '#3b82f620' : 'var(--bg3)',
+                border: `2px solid ${active ? '#3b82f6' : 'var(--border)'}`,
+                borderRadius: 12, cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                color: active ? '#3b82f6' : 'var(--text3)', fontWeight: active ? 700 : 400, fontSize: 12,
+              }}>
+                {t.icon}
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      </Section>
 
       {/* Dados pessoais */}
       <Section icon={<User size={16} color='#22c55e' />} title='Dados pessoais'>
@@ -129,7 +157,7 @@ export default function Settings() {
 
       {/* ═══════ METAS ═══════ */}
       <Section icon={<Target size={16} color='#f59e0b' />} title='Metas de Faturamento & Lucro'>
-        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14, lineHeight: 1.5 }}>
           Defina suas metas para acompanhar o progresso no dashboard e nas conquistas.
         </p>
 
@@ -334,17 +362,17 @@ export default function Settings() {
       </button>
 
       <button onClick={handleExport} style={{
-        width: '100%', padding: '14px', background: '#1e293b', border: '1px solid #334155',
-        borderRadius: 14, color: '#94a3b8', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+        width: '100%', padding: '14px', background: 'var(--bg3)', border: '1px solid var(--border)',
+        borderRadius: 14, color: 'var(--text2)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
       }}>
         <Download size={16} />
         Exportar dados (JSON)
       </button>
 
-      <div style={{ marginTop: 24, padding: 14, background: '#1e293b', borderRadius: 12, border: '1px solid #334155' }}>
-        <p style={{ fontSize: 12, color: '#475569', textAlign: 'center' }}>EasyDrive v1.0 by Seven Xperts</p>
-        <p style={{ fontSize: 12, color: '#475569', textAlign: 'center', marginTop: 4 }}>{trips.length} corridas • {expenses.length} gastos registrados</p>
+      <div style={{ marginTop: 24, padding: 14, background: 'var(--bg3)', borderRadius: 12, border: '1px solid var(--border)' }}>
+        <p style={{ fontSize: 12, color: 'var(--text4)', textAlign: 'center' }}>EasyDrive v1.0 by Seven Xperts</p>
+        <p style={{ fontSize: 12, color: 'var(--text4)', textAlign: 'center', marginTop: 4 }}>{trips.length} corridas • {expenses.length} gastos registrados</p>
       </div>
     </div>
   )
@@ -355,7 +383,7 @@ function Section({ icon, title, children }) {
     <div style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}>
         {icon}
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>{title}</h2>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
       </div>
       {children}
     </div>
@@ -363,11 +391,11 @@ function Section({ icon, title, children }) {
 }
 
 function Label({ children }) {
-  return <p style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>{children}</p>
+  return <p style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>{children}</p>
 }
 
 const inputStyle = {
-  width: '100%', background: '#1e293b', border: '1px solid #334155',
-  borderRadius: 10, padding: '12px 14px', color: '#f1f5f9',
+  width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)',
+  borderRadius: 10, padding: '12px 14px', color: 'var(--text)',
   fontSize: 15, outline: 'none', marginBottom: 14, boxSizing: 'border-box',
 }

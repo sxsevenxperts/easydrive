@@ -13,18 +13,40 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>EasyDrive — Painel do Motorista</title>
     <style>
+      :root {
+        --bg:          #0f172a;
+        --bg2:         #111827;
+        --bg3:         #1e293b;
+        --border:      #334155;
+        --border-dim:  #1e293b;
+        --text:        #f1f5f9;
+        --text2:       #94a3b8;
+        --text3:       #64748b;
+        --text4:       #475569;
+      }
+      [data-theme="light"] {
+        --bg:          #f1f5f9;
+        --bg2:         #ffffff;
+        --bg3:         #e8edf3;
+        --border:      #cbd5e1;
+        --border-dim:  #e2e8f0;
+        --text:        #0f172a;
+        --text2:       #334155;
+        --text3:       #64748b;
+        --text4:       #94a3b8;
+      }
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        background: #0f172a;
-        color: #f1f5f9;
+        background: var(--bg);
+        color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         -webkit-font-smoothing: antialiased;
         overscroll-behavior: none;
       }
       #root { min-height: 100dvh; }
       ::-webkit-scrollbar { width: 4px; }
-      ::-webkit-scrollbar-track { background: #1e293b; }
-      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+      ::-webkit-scrollbar-track { background: var(--bg3); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
     </style>
   </head>
   <body>

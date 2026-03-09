@@ -16,8 +16,8 @@ export default function NavBar({ active, onTab }) {
   return (
     <nav style={{
       position: 'fixed', bottom: 0, left: 0, right: 0,
-      background: '#0f172a',
-      borderTop: '1px solid #1e293b',
+      background: 'var(--bg)',
+      borderTop: '1px solid var(--border-dim)',
       display: 'flex',
       zIndex: 100,
       paddingBottom: 'env(safe-area-inset-bottom)',
@@ -46,14 +46,14 @@ export default function NavBar({ active, onTab }) {
                   position: 'absolute', top: -4, right: -4,
                   width: 8, height: 8, borderRadius: '50%',
                   background: tripStatus === 'trip' ? '#22c55e' : '#f59e0b',
-                  border: '1px solid #0f172a',
+                  border: '1px solid var(--bg)',
                 }} />
               )}
               {id === 'dashboard' && hasAlert && (
                 <span style={{
                   position: 'absolute', top: -4, right: -4,
                   width: 8, height: 8, borderRadius: '50%',
-                  background: '#ef4444', border: '1px solid #0f172a',
+                  background: '#ef4444', border: '1px solid var(--bg)',
                 }} />
               )}
             </div>

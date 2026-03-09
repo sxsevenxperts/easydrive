@@ -216,9 +216,11 @@ export default function Login({ onAuth }) {
           <>
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
               <img src='/logo.png' alt='EasyDrive' style={{
-                width: 220, height: 'auto', marginBottom: 4,
-                WebkitMaskImage: 'radial-gradient(ellipse 90% 80% at 50% 45%, black 55%, transparent 85%)',
-                maskImage: 'radial-gradient(ellipse 90% 80% at 50% 45%, black 55%, transparent 85%)',
+                width: 260, height: 'auto', marginBottom: -8,
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 14%), radial-gradient(ellipse 90% 88% at 50% 58%, black 65%, transparent 86%)',
+                WebkitMaskComposite: 'destination-in',
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 14%), radial-gradient(ellipse 90% 88% at 50% 58%, black 65%, transparent 86%)',
+                maskComposite: 'intersect',
               }} />
             </div>
 
@@ -314,13 +316,13 @@ export function SubscriptionExpired({ user, subscription, onLogout }) {
 }
 
 const S = {
-  wrapper: { minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: '#0f172a' },
-  card: { width: '100%', maxWidth: 380, background: '#111827', borderRadius: 20, padding: '32px 24px', border: '1px solid #1e293b' },
-  center: { minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' },
+  wrapper: { minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: '#000' },
+  card: { width: '100%', maxWidth: 380, background: '#0d0d0d', borderRadius: 20, padding: '32px 24px', border: '1px solid #1a1a1a' },
+  center: { minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' },
   iconBox: { width: 72, height: 72, background: '#3b82f620', borderRadius: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
   label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
   inputWrap: { position: 'relative', marginBottom: 16 },
   icon: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' },
-  input: { width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '13px 14px 13px 42px', color: '#f1f5f9', fontSize: 15, outline: 'none', boxSizing: 'border-box' },
+  input: { width: '100%', background: '#111', border: '1px solid #2a2a2a', borderRadius: 12, padding: '13px 14px 13px 42px', color: '#f1f5f9', fontSize: 15, outline: 'none', boxSizing: 'border-box' },
   btn: { width: '100%', padding: '14px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
 }
