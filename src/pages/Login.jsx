@@ -43,7 +43,12 @@ export default function Login({ onAuth }) {
       return
     }
 
-    const timeout = setTimeout(() => setChecking(false), 5000)
+    // Pré-aquece conexão em paralelo (silent ping)
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/`, {
+      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
+    }).catch(() => {})
+
+    const timeout = setTimeout(() => setChecking(false), 8000)
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(timeout)
@@ -78,8 +83,8 @@ export default function Login({ onAuth }) {
       return
     }
 
-    // Helper: timeout de 7s em qualquer chamada Supabase
-    const withTimeout = (promise, ms = 7000) =>
+    // Helper: timeout de 15s em qualquer chamada Supabase
+    const withTimeout = (promise, ms = 15000) =>
       Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))])
 
     try {
@@ -257,8 +262,16 @@ export default function Login({ onAuth }) {
               </div>
 
               <button type='submit' disabled={loading} style={S.btn}>
-                {loading ? <Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /> : 'Entrar'}
+                {loading
+                  ? <><Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /><span style={{ fontSize: 13 }}>Conectando...</span></>
+                  : 'Entrar'
+                }
               </button>
+              {loading && (
+                <p style={{ textAlign: 'center', fontSize: 11, color: '#475569', marginTop: 10 }}>
+                  Pode demorar alguns segundos na primeira vez
+                </p>
+              )}
             </form>
 
             <p style={{ textAlign: 'center', fontSize: 12, color: '#475569', marginTop: 20, lineHeight: 1.6 }}>
