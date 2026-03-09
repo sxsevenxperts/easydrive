@@ -78,36 +78,44 @@ export default function Login({ onAuth }) {
       return
     }
 
-    // Tenta login
-    const { data, error: err } = await supabase.auth.signInWithPassword({ email, password })
+    // Helper: timeout de 7s em qualquer chamada Supabase
+    const withTimeout = (promise, ms = 7000) =>
+      Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))])
 
-    if (err && err.message === 'Invalid login credentials') {
-      // Conta não existe → cria automaticamente
-      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({ email, password })
-      if (signUpErr) {
-        setError(signUpErr.message)
-        setLoading(false)
+    try {
+      // Tenta login online
+      const { data, error: err } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password })
+      )
+
+      if (err && err.message === 'Invalid login credentials') {
+        // Conta não existe → cria automaticamente
+        const { data: signUpData, error: signUpErr } = await withTimeout(
+          supabase.auth.signUp({ email, password })
+        )
+        if (signUpErr) { setError(signUpErr.message); setLoading(false); return }
+        if (signUpData.user && !signUpData.session) {
+          setError('Conta criada! Verifique seu e-mail para confirmar.')
+          setLoading(false)
+          return
+        }
+        const sub = await checkSubscription(signUpData.user.id)
+        onAuth({ user: signUpData.user, subscription: sub })
         return
       }
-      // Supabase pode exigir confirmação de email
-      if (signUpData.user && !signUpData.session) {
-        setError('Conta criada! Verifique seu e-mail para confirmar.')
-        setLoading(false)
-        return
-      }
-      const sub = await checkSubscription(signUpData.user.id)
-      onAuth({ user: signUpData.user, subscription: sub })
-      return
-    }
 
-    if (err) {
-      setError(err.message)
-      setLoading(false)
-      return
-    }
+      if (err) { setError(err.message); setLoading(false); return }
 
-    const sub = await checkSubscription(data.user.id)
-    onAuth({ user: data.user, subscription: sub })
+      const sub = await checkSubscription(data.user.id)
+      onAuth({ user: data.user, subscription: sub })
+
+    } catch {
+      // Supabase inacessível → fallback offline
+      const res = await offlineLogin(email, password)
+      if (!res.ok) { setError(res.error); setLoading(false); return }
+      sessionStorage.setItem('easydrive_session', JSON.stringify(res.user))
+      onAuth({ user: res.user, subscription: { active: true } })
+    }
   }
 
   const handleForgot = async (e) => {
