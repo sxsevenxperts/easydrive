@@ -49,26 +49,52 @@ export default function ActiveTrip({ sharedRide }) {
   const [destSearching, setDestSearching] = useState(false)
   const searchTimeout = useRef(null)
 
-  // Monitora clipboard quando usuário retorna do app de corrida/delivery
+  // Monitora clipboard automaticamente — ao retornar ao app E a cada 2s em foco
   const lastClipRef = useRef('')
+  const [monitoring, setMonitoring] = useState(false)
+
+  const tryReadClipboard = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text || text === lastClipRef.current) return
+      lastClipRef.current = text
+      const parsed = parseRideText(text)
+      if (parsed) {
+        setDetectedRide(parsed)
+        if (parsed.platform) setPlatform(parsed.platform)
+      }
+    } catch {}
+  }, [])
+
   useEffect(() => {
-    const handleVisibility = async () => {
-      if (document.visibilityState !== 'visible') return
-      try {
-        const text = await navigator.clipboard.readText()
-        if (text === lastClipRef.current) return // mesmo texto, ignora
-        lastClipRef.current = text
-        const parsed = parseRideText(text)
-        if (parsed) {
-          setDetectedRide(parsed)
-          // Auto-seleciona plataforma se detectou
-          if (parsed.platform) setPlatform(parsed.platform)
-        }
-      } catch {}
+    // Ao voltar para o app (de qualquer outro app)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') tryReadClipboard()
     }
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [])
+
+    // Polling a cada 2s enquanto o app está em foco
+    let pollId = null
+    const startPoll = () => {
+      pollId = setInterval(tryReadClipboard, 2000)
+      setMonitoring(true)
+    }
+    const stopPoll = () => {
+      clearInterval(pollId)
+      setMonitoring(false)
+    }
+
+    window.addEventListener('focus', startPoll)
+    window.addEventListener('blur', stopPoll)
+    if (document.hasFocus()) startPoll()
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', startPoll)
+      window.removeEventListener('blur', stopPoll)
+      clearInterval(pollId)
+    }
+  }, [tryReadClipboard])
 
   const fuelCost = activeTrip
     ? (activeTrip.km / settings.fuelConsumption) * settings.fuelPrice
@@ -150,10 +176,62 @@ export default function ActiveTrip({ sharedRide }) {
   if (tripStatus === 'idle') {
     return (
       <div style={{ padding: '20px 16px 90px' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Nova Viagem</h1>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>
-          Aceite a corrida no app e toque em "Iniciar" — a origem é capturada automaticamente pelo GPS
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800 }}>Nova Viagem</h1>
+          {/* Indicador de monitoramento ativo */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            background: monitoring ? '#22c55e15' : '#1e293b',
+            border: `1px solid ${monitoring ? '#22c55e' : '#334155'}`,
+            borderRadius: 8, padding: '4px 10px',
+          }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: monitoring ? '#22c55e' : '#475569',
+              animation: monitoring ? 'pulse 1.5s infinite' : 'none',
+            }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: monitoring ? '#22c55e' : '#475569' }}>
+              {monitoring ? 'Monitorando' : 'Aguardando'}
+            </span>
+          </div>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+          Aceite a corrida no app — o EasyDrive detecta automaticamente os dados
         </p>
+
+        {/* Banner de como capturar notificação */}
+        <div style={{
+          background: 'linear-gradient(135deg, #3b82f615, #22c55e10)',
+          border: '1px solid #22c55e30', borderRadius: 14,
+          padding: '14px 16px', marginBottom: 20,
+        }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', marginBottom: 10 }}>
+            📲 Como o EasyDrive captura sua corrida:
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>1️⃣</span>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}>Automático (Clipboard)</p>
+                <p style={{ fontSize: 11, color: '#64748b' }}>Copie o texto da notificação do Uber/99/iFood — o app detecta ao voltar aqui</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>2️⃣</span>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}>Compartilhar da notificação</p>
+                <p style={{ fontSize: 11, color: '#64748b' }}>Segure a notificação → Compartilhar → EasyDrive (funciona com todos os apps)</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>3️⃣</span>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}>Colar manualmente</p>
+                <p style={{ fontSize: 11, color: '#64748b' }}>Toque no botão 📋 abaixo para colar texto da corrida</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Plataforma */}
         <SectionLabel>Plataforma</SectionLabel>
