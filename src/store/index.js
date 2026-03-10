@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { syncTrip, syncExpense, syncDeleteTrip, syncDeleteExpense, syncDailyStats } from '../lib/sync'
 
 // Persistência manual — sem middleware para evitar hook order instável
 const STORAGE_KEY = 'motoapp-v1'
@@ -27,6 +28,16 @@ const defaultSettings = {
   plate: '',
   name: '',
   platforms: ['uber', '99'],
+  goalDailyRevenue: 0,
+  goalDailyProfit: 0,
+  goalWeeklyRevenue: 0,
+  goalWeeklyProfit: 0,
+  goalMonthlyRevenue: 0,
+  goalMonthlyProfit: 0,
+  goalYearlyRevenue: 0,
+  notifSafety: true,
+  notifAchievements: true,
+  notifStreak: true,
 }
 
 const defaultStats = {
@@ -36,13 +47,18 @@ const defaultStats = {
 }
 
 export const useStore = create((set, get) => ({
-  // ---- CONFIGURAÇÕES ----
+  // ── USUÁRIO LOGADO (para sync) ──
+  userId: null,
+  userEmail: null,
+  setUser: (id, email) => set({ userId: id, userEmail: email }),
+
+  // ── CONFIGURAÇÕES ──
   settings: { ...defaultSettings, ...(saved.settings || {}) },
   updateSettings: (data) => {
     set((s) => { const settings = { ...s.settings, ...data }; saveState({ settings }); return { settings } })
   },
 
-  // ---- VIAGEM ATIVA ----
+  // ── VIAGEM ATIVA ──
   activeTrip: null,
   tripStatus: 'idle',
 
@@ -109,11 +125,17 @@ export const useStore = create((set, get) => ({
     saveState({ trips })
     set({ trips, activeTrip: null, tripStatus: 'idle' })
     get()._recalcStats()
+
+    // Sync com Supabase em background
+    if (s.userId) {
+      syncTrip(trip, s.userId)
+      syncDailyStats(trips, get().expenses, s.settings, s.userId)
+    }
   },
 
   cancelTrip: () => set({ activeTrip: null, tripStatus: 'idle' }),
 
-  // ---- HISTÓRICO ----
+  // ── HISTÓRICO ──
   trips: saved.trips || [],
   addManualTrip: (tripData) => {
     const trip = {
@@ -124,30 +146,60 @@ export const useStore = create((set, get) => ({
     saveState({ trips })
     set({ trips })
     get()._recalcStats()
+
+    // Sync
+    const userId = get().userId
+    if (userId) syncTrip(trip, userId)
   },
   deleteTrip: (id) => {
     const trips = get().trips.filter((t) => t.id !== id)
     saveState({ trips })
     set({ trips })
     get()._recalcStats()
+
+    // Sync
+    const userId = get().userId
+    if (userId) syncDeleteTrip(id, userId)
   },
 
-  // ---- GASTOS ----
+  // Substituir trips local por dados do Supabase (full sync)
+  setTripsFromSync: (trips) => {
+    saveState({ trips })
+    set({ trips })
+    get()._recalcStats()
+  },
+
+  // ── GASTOS ──
   expenses: saved.expenses || [],
   addExpense: (expense) => {
-    const expenses = [{ id: Date.now(), ...expense }, ...get().expenses].slice(0, 200)
+    const exp = { id: Date.now(), ...expense }
+    const expenses = [exp, ...get().expenses].slice(0, 200)
     saveState({ expenses })
     set({ expenses })
     get()._recalcStats()
+
+    // Sync
+    const userId = get().userId
+    if (userId) syncExpense(exp, userId)
   },
   deleteExpense: (id) => {
     const expenses = get().expenses.filter((e) => e.id !== id)
     saveState({ expenses })
     set({ expenses })
     get()._recalcStats()
+
+    // Sync
+    const userId = get().userId
+    if (userId) syncDeleteExpense(id, userId)
   },
 
-  // ---- ESTATÍSTICAS ----
+  setExpensesFromSync: (expenses) => {
+    saveState({ expenses })
+    set({ expenses })
+    get()._recalcStats()
+  },
+
+  // ── ESTATÍSTICAS ──
   stats: saved.stats || defaultStats,
   _recalcStats: () => {
     const { trips, expenses, settings } = get()
@@ -169,7 +221,7 @@ export const useStore = create((set, get) => ({
     set({ stats })
   },
 
-  // ---- LOCALIZAÇÃO E SEGURANÇA ----
+  // ── LOCALIZAÇÃO E SEGURANÇA ──
   currentLocation: null,
   currentAddress: null,
   safetyScore: null,
@@ -177,7 +229,7 @@ export const useStore = create((set, get) => ({
   setAddress: (addr) => set({ currentAddress: addr }),
   setSafetyScore: (score) => set({ safetyScore: score }),
 
-  // ---- ALERTAS ----
+  // ── ALERTAS ──
   alerts: [],
   addAlert: (alert) => set((s) => ({ alerts: [{ id: Date.now(), ...alert }, ...s.alerts.slice(0, 19)] })),
   clearAlerts: () => set({ alerts: [] }),

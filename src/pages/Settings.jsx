@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../store'
 import { useTheme } from '../hooks/useTheme'
 import { fmt } from '../utils/format'
-import { Save, Fuel, User, Car, DollarSign, Download, Target, Bell, BellOff, Sun, Moon, Monitor } from 'lucide-react'
+import { Save, Fuel, User, Car, DollarSign, Download, Target, Bell, BellOff, Sun, Moon, Monitor, CreditCard, LogOut, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import {
   getPermissionStatus,
   requestNotificationPermission,
@@ -20,12 +21,18 @@ const ALL_PLATFORMS = [
   { id: 'lalamove', label: '📦 Lalamove' },
 ]
 
-export default function Settings() {
+export default function Settings({ user, subscription, onTab, onLogout }) {
   const { settings, updateSettings, trips, expenses } = useStore()
   const { theme, setTheme } = useTheme()
   const [saved, setSaved] = useState(false)
   const [form, setForm] = useState({ ...settings })
   const [notifStatus, setNotifStatus] = useState(getPermissionStatus())
+  // change password state
+  const [pwdForm, setPwdForm] = useState({ current: '', new: '', confirm: '' })
+  const [pwdLoading, setPwdLoading] = useState(false)
+  const [pwdError, setPwdError] = useState('')
+  const [pwdOk, setPwdOk] = useState(false)
+  const [showPwd, setShowPwd] = useState(false)
 
   useEffect(() => {
     setNotifStatus(getPermissionStatus())
@@ -54,6 +61,26 @@ export default function Settings() {
   }
 
   const custoKm = form.fuelConsumption > 0 ? form.fuelPrice / form.fuelConsumption : 0
+
+  const handleChangePassword = async () => {
+    setPwdError('')
+    if (!pwdForm.new || pwdForm.new.length < 6) { setPwdError('Nova senha deve ter pelo menos 6 caracteres'); return }
+    if (pwdForm.new !== pwdForm.confirm) { setPwdError('Senhas não coincidem'); return }
+    if (!supabase) { setPwdError('Sem conexão com servidor'); return }
+    setPwdLoading(true)
+    try {
+      // Re-autenticar primeiro
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email: user?.email, password: pwdForm.current })
+      if (signInErr) { setPwdError('Senha atual incorreta'); setPwdLoading(false); return }
+      // Atualizar senha
+      const { error } = await supabase.auth.updateUser({ password: pwdForm.new })
+      if (error) { setPwdError(error.message); setPwdLoading(false); return }
+      setPwdOk(true)
+      setPwdForm({ current: '', new: '', confirm: '' })
+      setTimeout(() => setPwdOk(false), 4000)
+    } catch { setPwdError('Erro ao alterar senha') }
+    setPwdLoading(false)
+  }
 
   return (
     <div style={{ padding: '16px 16px 90px' }}>
@@ -349,6 +376,48 @@ export default function Settings() {
         )}
       </Section>
 
+      {/* ═══════ SEGURANÇA ═══════ */}
+      {supabase && user?.email && (
+        <Section icon={<Lock size={16} color='#f59e0b' />} title='Segurança'>
+          <Label>Alterar senha</Label>
+          {pwdOk && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#22c55e20', border: '1px solid #22c55e40', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+              <CheckCircle size={14} color='#22c55e' />
+              <span style={{ fontSize: 13, color: '#22c55e' }}>Senha alterada com sucesso!</span>
+            </div>
+          )}
+          {['current', 'new', 'confirm'].map((field) => (
+            <div key={field} style={{ position: 'relative', marginBottom: 10 }}>
+              <Lock size={14} color='#64748b' style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type={showPwd ? 'text' : 'password'}
+                value={pwdForm[field]}
+                onChange={(e) => setPwdForm({ ...pwdForm, [field]: e.target.value })}
+                placeholder={field === 'current' ? 'Senha atual' : field === 'new' ? 'Nova senha (mín. 6 char)' : 'Confirmar nova senha'}
+                style={{ ...inputStyle, paddingLeft: 36, paddingRight: 36 }}
+              />
+              {field === 'confirm' && (
+                <button type='button' onClick={() => setShowPwd(!showPwd)}
+                  style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  {showPwd ? <EyeOff size={16} color='#64748b' /> : <Eye size={16} color='#64748b' />}
+                </button>
+              )}
+            </div>
+          ))}
+          {pwdError && (
+            <p style={{ fontSize: 12, color: '#ef4444', marginBottom: 10, paddingLeft: 4 }}>{pwdError}</p>
+          )}
+          <button onClick={handleChangePassword} disabled={pwdLoading} style={{
+            width: '100%', padding: '12px', background: '#f59e0b20', border: '1px solid #f59e0b60',
+            borderRadius: 12, color: '#f59e0b', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: pwdLoading ? 0.7 : 1,
+          }}>
+            <Lock size={15} />
+            {pwdLoading ? 'Alterando...' : 'Alterar senha'}
+          </button>
+        </Section>
+      )}
+
       {/* Salvar */}
       <button onClick={handleSave} style={{
         width: '100%', padding: '16px', marginBottom: 12,
@@ -365,14 +434,45 @@ export default function Settings() {
         width: '100%', padding: '14px', background: 'var(--bg3)', border: '1px solid var(--border)',
         borderRadius: 14, color: 'var(--text2)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        marginBottom: 12,
       }}>
         <Download size={16} />
         Exportar dados (JSON)
       </button>
 
-      <div style={{ marginTop: 24, padding: 14, background: 'var(--bg3)', borderRadius: 12, border: '1px solid var(--border)' }}>
+      {/* Faturamento */}
+      {onTab && (
+        <button onClick={() => onTab('billing')} style={{
+          width: '100%', padding: '14px', background: '#3b82f615', border: '1px solid #3b82f640',
+          borderRadius: 14, color: '#3b82f6', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          marginBottom: 12,
+        }}>
+          <CreditCard size={16} />
+          Faturamento & Assinatura
+          {subscription && !subscription.active && (
+            <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20 }}>Vencida</span>
+          )}
+        </button>
+      )}
+
+      {/* Logout */}
+      {onLogout && (
+        <button onClick={onLogout} style={{
+          width: '100%', padding: '14px', background: 'none', border: '1px solid #ef444440',
+          borderRadius: 14, color: '#ef4444', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          marginBottom: 12,
+        }}>
+          <LogOut size={16} />
+          Sair da conta
+        </button>
+      )}
+
+      <div style={{ marginTop: 12, padding: 14, background: 'var(--bg3)', borderRadius: 12, border: '1px solid var(--border)' }}>
         <p style={{ fontSize: 12, color: 'var(--text4)', textAlign: 'center' }}>EasyDrive v1.0 by Seven Xperts</p>
         <p style={{ fontSize: 12, color: 'var(--text4)', textAlign: 'center', marginTop: 4 }}>{trips.length} corridas • {expenses.length} gastos registrados</p>
+        {user?.email && <p style={{ fontSize: 11, color: 'var(--text4)', textAlign: 'center', marginTop: 4 }}>{user.email}</p>}
       </div>
     </div>
   )

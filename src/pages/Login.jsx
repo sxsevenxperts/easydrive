@@ -43,12 +43,30 @@ export default function Login({ onAuth }) {
       return
     }
 
-    // Pré-aquece conexão em paralelo (silent ping)
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/`, {
-      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
-    }).catch(() => {})
+    // ── Tentativa rápida: sessão válida no localStorage (sem round-trip) ──
+    const tryLocalSession = () => {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
+        const host = new URL(supabaseUrl).hostname.split('.')[0]
+        const key = `sb-${host}-auth-token`
+        const stored = JSON.parse(localStorage.getItem(key))
+        if (stored?.access_token && stored.expires_at * 1000 > Date.now() + 60000) {
+          return stored // sessão válida por mais de 1 minuto
+        }
+      } catch { /* ignore */ }
+      return null
+    }
 
-    const timeout = setTimeout(() => setChecking(false), 8000)
+    const localSession = tryLocalSession()
+    if (localSession) {
+      checkSubscription(localSession.user.id).then(sub => {
+        onAuth({ user: localSession.user, subscription: sub })
+      }).catch(() => setChecking(false))
+      return
+    }
+
+    // ── Fallback: getSession via rede (para sessões perto do vencimento) ──
+    const timeout = setTimeout(() => setChecking(false), 12000)
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(timeout)

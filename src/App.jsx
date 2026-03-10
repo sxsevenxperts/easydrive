@@ -2,13 +2,16 @@ import { useState, useEffect, useRef } from 'react'
 import { useGPS } from './hooks/useGPS'
 import { useTheme } from './hooks/useTheme'
 import { useStore } from './store'
-import { supabase } from './lib/supabase'
+import { supabase, checkSubscription, checkIsAdmin } from './lib/supabase'
+import { startPeriodicSync, stopPeriodicSync, fullSync, processQueue } from './lib/sync'
 import NavBar from './components/NavBar'
 import Dashboard from './pages/Dashboard'
 import ActiveTrip from './pages/ActiveTrip'
 import History from './pages/History'
 import Settings from './pages/Settings'
 import Stats from './pages/Stats'
+import Billing from './pages/Billing'
+import AdminPanel from './pages/AdminPanel'
 import Login, { SubscriptionExpired } from './pages/Login'
 import { parseShareUrl } from './utils/rideParser'
 import {
@@ -27,13 +30,28 @@ function getInitialTab() {
   return 'dashboard'
 }
 
-function MainApp({ sharedRide }) {
+function MainApp({ sharedRide, user, subscription, onLogout }) {
   const [tab, setTab] = useState(getInitialTab())
-  const { trips, settings, expenses, safetyScore } = useStore()
+  const { trips, settings, expenses, safetyScore, setUser } = useStore()
   const prevAchievementsRef = useRef(null)
   const streakNotifiedRef = useRef(null)
   useTheme()
   useGPS()
+
+  // Setar userId no store para sync
+  useEffect(() => {
+    if (user?.id) {
+      setUser(user.id, user.email)
+
+      // Iniciar sync periódico
+      const cleanup = startPeriodicSync(user.id, useStore.getState)
+
+      // Processar fila pendente
+      processQueue(user.id)
+
+      return () => { cleanup(); stopPeriodicSync() }
+    }
+  }, [user?.id])
 
   // Registra SW uma vez
   useEffect(() => { registerServiceWorker() }, [])
@@ -66,7 +84,7 @@ function MainApp({ sharedRide }) {
     prevAchievementsRef.current = current
   }, [trips, settings])
 
-  // Streak em risco (> 3 dias e não trabalhou hoje após 12h)
+  // Streak em risco
   useEffect(() => {
     if (getPermissionStatus() !== 'granted') return
     if (settings.notifStreak === false) return
@@ -83,6 +101,15 @@ function MainApp({ sharedRide }) {
     }
   }, [trips, settings])
 
+  // Se está na tab billing
+  if (tab === 'billing') {
+    return (
+      <div style={{ background: 'var(--bg)', minHeight: '100dvh', color: 'var(--text)' }}>
+        <Billing user={user} subscription={subscription} onBack={() => setTab('dashboard')} />
+      </div>
+    )
+  }
+
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100dvh', color: 'var(--text)' }}>
       <div style={{
@@ -94,7 +121,21 @@ function MainApp({ sharedRide }) {
         {tab === 'trip' && <ActiveTrip sharedRide={sharedRide} />}
         {tab === 'history' && <History />}
         {tab === 'stats' && <Stats />}
-        {tab === 'settings' && <Settings />}
+        {tab === 'settings' && <Settings user={user} subscription={subscription} onTab={setTab} onLogout={onLogout} />}
+
+        {/* Footer */}
+        <div style={{
+          textAlign: 'center', padding: '16px 0 90px',
+          borderTop: '1px solid var(--border-dim)', marginTop: 20,
+        }}>
+          <p style={{ fontSize: 11, color: '#475569' }}>
+            Powered by <strong style={{ color: '#64748b' }}>Seven Xperts</strong>
+          </p>
+          <p style={{ fontSize: 10, color: '#334155' }}>
+            CNPJ 32.794.007/0001-19
+          </p>
+        </div>
+
         <NavBar active={tab} onTab={setTab} />
       </div>
     </div>
@@ -103,6 +144,7 @@ function MainApp({ sharedRide }) {
 
 export default function App() {
   const [auth, setAuth] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [sharedRide, setSharedRide] = useState(null)
   const [showNotifBanner, setShowNotifBanner] = useState(false)
 
@@ -111,8 +153,15 @@ export default function App() {
     if (parsed) { setSharedRide(parsed); window.history.replaceState({}, '', '/') }
   }, [])
 
-  const handleAuth = (result) => {
+  const handleAuth = async (result) => {
     setAuth(result)
+
+    // Verificar se é admin
+    if (result?.user?.id) {
+      const admin = await checkIsAdmin(result.user.id)
+      setIsAdmin(admin)
+    }
+
     // Após login, exibe banner pedindo permissão de notificação
     setTimeout(() => {
       if (getPermissionStatus() === 'default') setShowNotifBanner(true)
@@ -120,8 +169,10 @@ export default function App() {
   }
 
   const handleLogout = async () => {
+    stopPeriodicSync()
     if (supabase) await supabase.auth.signOut()
     setAuth(null)
+    setIsAdmin(false)
   }
 
   const handleEnableNotifs = async () => {
@@ -132,14 +183,26 @@ export default function App() {
 
   if (auth === null) return <Login onAuth={handleAuth} />
 
+  // ── Admin Panel ──
+  if (isAdmin && auth?.user) {
+    return <AdminPanel user={auth.user} onLogout={handleLogout} />
+  }
+
+  // ── Assinatura expirada ──
   if (auth?.user && auth.subscription && !auth.subscription.active) {
     return <SubscriptionExpired user={auth.user} subscription={auth.subscription} onLogout={handleLogout} />
   }
 
+  // ── App do motorista ──
   if (auth?.user || auth?.demo) {
     return (
       <>
-        <MainApp sharedRide={sharedRide} />
+        <MainApp
+          sharedRide={sharedRide}
+          user={auth.user}
+          subscription={auth.subscription}
+          onLogout={handleLogout}
+        />
 
         {/* Banner de permissão */}
         {showNotifBanner && (
