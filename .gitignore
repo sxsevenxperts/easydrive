@@ -1,4 +1,4 @@
-.env
-.env.local
-.env*.local
-.claude/
+node_modules/
+dist/
+.DS_Store
+*.local
