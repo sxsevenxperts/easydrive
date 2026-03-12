@@ -1,59 +1,29 @@
 import { useState, useEffect } from 'react'
-import { supabase, checkSubscription } from '../lib/supabase'
-import { Lock, Mail, AlertCircle, CheckCircle, Loader, ArrowLeft } from 'lucide-react'
-
-// Auth offline (quando Supabase não está configurado)
-const OFFLINE_KEY = 'easydrive_offline_auth'
-
-function getOfflineAuth() {
-  try { return JSON.parse(localStorage.getItem(OFFLINE_KEY)) } catch { return null }
-}
-
-async function offlineLogin(email, password) {
-  const stored = getOfflineAuth()
-  if (!stored) {
-    // Primeiro acesso: cadastra localmente
-    localStorage.setItem(OFFLINE_KEY, JSON.stringify({ email, password }))
-    return { ok: true, user: { email, id: 'local' } }
-  }
-  if (stored.email === email && stored.password === password) {
-    return { ok: true, user: { email, id: 'local' } }
-  }
-  return { ok: false, error: 'E-mail ou senha incorretos' }
-}
+import { supabase, checkSubscription, checkIsAdmin } from '../lib/supabase'
+import { Lock, Mail, AlertCircle, CheckCircle, Loader, ArrowLeft, Shield, Car } from 'lucide-react'
 
 export default function Login({ onAuth }) {
   const [screen, setScreen] = useState('login') // 'login' | 'forgot' | 'sent'
+  const [accountType, setAccountType] = useState('driver') // 'driver' | 'admin'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
-  const [offlinePwd, setOfflinePwd] = useState(null)
 
   const hasSupabase = !!supabase
 
   useEffect(() => {
-    if (!hasSupabase) {
-      const session = sessionStorage.getItem('easydrive_session')
-      if (session) {
-        try { onAuth({ user: JSON.parse(session), subscription: { active: true } }); return } catch {}
-      }
-      setChecking(false)
-      return
-    }
+    if (!hasSupabase) { setChecking(false); return }
 
-    // ── Tentativa rápida: sessão válida no localStorage (sem round-trip) ──
     const tryLocalSession = () => {
       try {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
         const host = new URL(supabaseUrl).hostname.split('.')[0]
         const key = `sb-${host}-auth-token`
         const stored = JSON.parse(localStorage.getItem(key))
-        if (stored?.access_token && stored.expires_at * 1000 > Date.now() + 60000) {
-          return stored // sessão válida por mais de 1 minuto
-        }
-      } catch { /* ignore */ }
+        if (stored?.access_token && stored.expires_at * 1000 > Date.now() + 60000) return stored
+      } catch {}
       return null
     }
 
@@ -65,9 +35,7 @@ export default function Login({ onAuth }) {
       return
     }
 
-    // ── Fallback: getSession via rede (para sessões perto do vencimento) ──
     const timeout = setTimeout(() => setChecking(false), 12000)
-
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(timeout)
       if (session?.user) {
@@ -84,7 +52,6 @@ export default function Login({ onAuth }) {
         onAuth({ user: session.user, subscription: sub })
       }
     })
-
     return () => listener.unsubscribe()
   }, [])
 
@@ -93,51 +60,49 @@ export default function Login({ onAuth }) {
     setError('')
     setLoading(true)
 
-    if (!hasSupabase) {
-      const res = await offlineLogin(email, password)
-      if (!res.ok) { setError(res.error); setLoading(false); return }
-      sessionStorage.setItem('easydrive_session', JSON.stringify(res.user))
-      onAuth({ user: res.user, subscription: { active: true } })
-      return
-    }
-
-    // Helper: timeout de 15s em qualquer chamada Supabase
     const withTimeout = (promise, ms = 15000) =>
       Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))])
 
     try {
-      // Tenta login online
       const { data, error: err } = await withTimeout(
         supabase.auth.signInWithPassword({ email, password })
       )
 
-      if (err && err.message === 'Invalid login credentials') {
-        // Conta não existe → cria automaticamente
-        const { data: signUpData, error: signUpErr } = await withTimeout(
-          supabase.auth.signUp({ email, password })
-        )
-        if (signUpErr) { setError(signUpErr.message); setLoading(false); return }
-        if (signUpData.user && !signUpData.session) {
-          setError('Conta criada! Verifique seu e-mail para confirmar.')
-          setLoading(false)
-          return
+      if (err) {
+        if (err.message === 'Invalid login credentials') {
+          setError('E-mail ou senha incorretos. Verifique e tente novamente.')
+        } else {
+          setError(err.message)
         }
-        const sub = await checkSubscription(signUpData.user.id)
-        onAuth({ user: signUpData.user, subscription: sub })
+        setLoading(false)
         return
       }
 
-      if (err) { setError(err.message); setLoading(false); return }
+      const user = data.user
 
-      const sub = await checkSubscription(data.user.id)
-      onAuth({ user: data.user, subscription: sub })
+      // Verificar role
+      const isAdmin = user.email === 'sevenxpertssxacadmy@gmail.com' || await checkIsAdmin(user.id)
+
+      if (accountType === 'admin' && !isAdmin) {
+        await supabase.auth.signOut()
+        setError('Esta conta não tem acesso de administrador.')
+        setLoading(false)
+        return
+      }
+
+      if (accountType === 'driver' && isAdmin) {
+        await supabase.auth.signOut()
+        setError('Esta é uma conta admin. Selecione "Administrador" para entrar.')
+        setLoading(false)
+        return
+      }
+
+      const sub = await checkSubscription(user.id)
+      onAuth({ user, subscription: sub })
 
     } catch {
-      // Supabase inacessível → fallback offline
-      const res = await offlineLogin(email, password)
-      if (!res.ok) { setError(res.error); setLoading(false); return }
-      sessionStorage.setItem('easydrive_session', JSON.stringify(res.user))
-      onAuth({ user: res.user, subscription: { active: true } })
+      setError('Erro de conexão. Verifique sua internet e tente novamente.')
+      setLoading(false)
     }
   }
 
@@ -146,20 +111,6 @@ export default function Login({ onAuth }) {
     if (!email) { setError('Digite seu e-mail primeiro'); return }
     setError('')
     setLoading(true)
-
-    if (!hasSupabase) {
-      const stored = getOfflineAuth()
-      if (!stored || stored.email !== email) {
-        setError('E-mail não encontrado no dispositivo')
-        setLoading(false)
-        return
-      }
-      setOfflinePwd(stored.password)
-      setScreen('sent')
-      setLoading(false)
-      return
-    }
-
     const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/?reset=1`,
     })
@@ -181,39 +132,25 @@ export default function Login({ onAuth }) {
     <div style={S.wrapper}>
       <div style={S.card}>
 
-        {/* ── E-MAIL / LINK ENVIADO ── */}
+        {/* E-mail enviado */}
         {screen === 'sent' && (
           <>
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
               <div style={{ ...S.iconBox, background: '#22c55e20' }}>
                 <CheckCircle size={36} color='#22c55e' />
               </div>
-              <h2 style={{ fontSize: 20, fontWeight: 800, marginTop: 16 }}>
-                {hasSupabase ? 'E-mail enviado!' : 'Sua senha salva'}
-              </h2>
+              <h2 style={{ fontSize: 20, fontWeight: 800, marginTop: 16 }}>E-mail enviado!</h2>
               <p style={{ color: '#64748b', fontSize: 13, marginTop: 8, lineHeight: 1.6 }}>
-                {hasSupabase
-                  ? `Enviamos um link de redefinição para ${email}. Verifique sua caixa de entrada.`
-                  : 'Esta é a senha armazenada no seu dispositivo:'
-                }
+                Enviamos um link de redefinição para <strong style={{ color: '#f1f5f9' }}>{email}</strong>. Verifique sua caixa de entrada.
               </p>
-              {offlinePwd && (
-                <div style={{
-                  background: '#1e293b', borderRadius: 10, padding: '12px 16px',
-                  marginTop: 14, border: '1px solid #334155',
-                  fontSize: 20, fontWeight: 800, color: '#f1f5f9', letterSpacing: 3,
-                }}>
-                  {offlinePwd}
-                </div>
-              )}
             </div>
-            <button onClick={() => { setScreen('login'); setError(''); setOfflinePwd(null) }} style={S.btn}>
+            <button onClick={() => { setScreen('login'); setError('') }} style={S.btn}>
               Voltar para o login
             </button>
           </>
         )}
 
-        {/* ── ESQUECEU A SENHA ── */}
+        {/* Esqueceu a senha */}
         {screen === 'forgot' && (
           <>
             <button onClick={() => { setScreen('login'); setError('') }}
@@ -222,10 +159,7 @@ export default function Login({ onAuth }) {
             </button>
             <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>Recuperar senha</h2>
             <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
-              {hasSupabase
-                ? 'Informe seu e-mail para receber o link de redefinição.'
-                : 'Informe o e-mail cadastrado para ver a senha salva no dispositivo.'
-              }
+              Informe seu e-mail para receber o link de redefinição.
             </p>
             <form onSubmit={handleForgot}>
               <label style={S.label}>E-mail</label>
@@ -242,17 +176,52 @@ export default function Login({ onAuth }) {
           </>
         )}
 
-        {/* ── LOGIN ── */}
+        {/* Login */}
         {screen === 'login' && (
           <>
-            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            {/* Logo */}
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
               <img src='/logo.png' alt='EasyDrive' style={{
-                width: 260, height: 'auto', marginBottom: -8,
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 14%), radial-gradient(ellipse 90% 88% at 50% 58%, black 65%, transparent 86%)',
-                WebkitMaskComposite: 'destination-in',
-                maskImage: 'linear-gradient(to bottom, transparent 0%, black 14%), radial-gradient(ellipse 90% 88% at 50% 58%, black 65%, transparent 86%)',
-                maskComposite: 'intersect',
+                width: 240, height: 'auto',
+                WebkitMaskImage: 'radial-gradient(ellipse 90% 88% at 50% 58%, black 65%, transparent 86%)',
+                maskImage: 'radial-gradient(ellipse 90% 88% at 50% 58%, black 65%, transparent 86%)',
               }} />
+            </div>
+
+            {/* Seletor de perfil */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 24 }}>
+              <button
+                type='button'
+                onClick={() => { setAccountType('driver'); setError('') }}
+                style={{
+                  padding: '12px 8px', borderRadius: 12, border: '2px solid',
+                  borderColor: accountType === 'driver' ? '#3b82f6' : '#1e293b',
+                  background: accountType === 'driver' ? '#3b82f615' : '#0f172a',
+                  color: accountType === 'driver' ? '#3b82f6' : '#64748b',
+                  cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <Car size={22} />
+                Motorista
+              </button>
+              <button
+                type='button'
+                onClick={() => { setAccountType('admin'); setError('') }}
+                style={{
+                  padding: '12px 8px', borderRadius: 12, border: '2px solid',
+                  borderColor: accountType === 'admin' ? '#a855f7' : '#1e293b',
+                  background: accountType === 'admin' ? '#a855f715' : '#0f172a',
+                  color: accountType === 'admin' ? '#a855f7' : '#64748b',
+                  cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <Shield size={22} />
+                Administrador
+              </button>
             </div>
 
             <form onSubmit={handleLogin}>
@@ -260,14 +229,14 @@ export default function Login({ onAuth }) {
               <div style={S.inputWrap}>
                 <Mail size={16} color='#64748b' style={S.icon} />
                 <input type='email' value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder='seu@email.com' required style={S.input} />
+                  placeholder='seu@email.com' required style={S.input} autoComplete='email' />
               </div>
 
               <label style={S.label}>Senha</label>
               <div style={S.inputWrap}>
                 <Lock size={16} color='#64748b' style={S.icon} />
                 <input type='password' value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder='••••••••' required style={S.input} />
+                  placeholder='••••••••' required style={S.input} autoComplete='current-password' />
               </div>
 
               {error && <Err msg={error} />}
@@ -279,12 +248,18 @@ export default function Login({ onAuth }) {
                 </button>
               </div>
 
-              <button type='submit' disabled={loading} style={S.btn}>
+              <button type='submit' disabled={loading} style={{
+                ...S.btn,
+                background: accountType === 'admin'
+                  ? 'linear-gradient(135deg, #a855f7, #7c3aed)'
+                  : 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              }}>
                 {loading
                   ? <><Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /><span style={{ fontSize: 13 }}>Conectando...</span></>
-                  : 'Entrar'
+                  : `Entrar como ${accountType === 'admin' ? 'Administrador' : 'Motorista'}`
                 }
               </button>
+
               {loading && (
                 <p style={{ textAlign: 'center', fontSize: 11, color: '#475569', marginTop: 10 }}>
                   Pode demorar alguns segundos na primeira vez
@@ -292,13 +267,15 @@ export default function Login({ onAuth }) {
               )}
             </form>
 
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#475569', marginTop: 20, lineHeight: 1.6 }}>
-              Sem conta?{' '}
-              <a href='https://wa.me/5500000000000?text=Quero+assinar+o+EasyDrive'
-                style={{ color: '#3b82f6', textDecoration: 'none' }}>
-                Assinar agora
-              </a>
-            </p>
+            {accountType === 'driver' && (
+              <p style={{ textAlign: 'center', fontSize: 12, color: '#475569', marginTop: 20, lineHeight: 1.6 }}>
+                Sem conta?{' '}
+                <a href='https://wa.me/5500000000000?text=Quero+assinar+o+EasyDrive'
+                  style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                  Assinar agora
+                </a>
+              </p>
+            )}
           </>
         )}
       </div>
@@ -328,17 +305,14 @@ export function SubscriptionExpired({ user, subscription, onLogout }) {
           <div style={{ ...S.iconBox, background: '#ef444420' }}>
             <AlertCircle size={36} color='#ef4444' />
           </div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, marginTop: 16 }}>
-            {subscription?.reason === 'not_found' ? 'Assinatura não encontrada' : 'Assinatura vencida'}
-          </h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800, marginTop: 16 }}>Assinatura vencida</h2>
           <p style={{ color: '#64748b', fontSize: 13, marginTop: 6 }}>{user?.email}</p>
         </div>
         <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 20, border: '1px solid #334155' }}>
           <p style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1.7 }}>
-            {subscription?.reason === 'not_found'
-              ? 'Nenhuma assinatura ativa para esta conta. Entre em contato para assinar.'
-              : <>Venceu em <strong style={{ color: '#f1f5f9' }}>{subscription?.expires_at ? new Date(subscription.expires_at).toLocaleDateString('pt-BR') : '—'}</strong>. Renove para continuar.</>
-            }
+            Venceu em <strong style={{ color: '#f1f5f9' }}>
+              {subscription?.expires_at ? new Date(subscription.expires_at).toLocaleDateString('pt-BR') : '—'}
+            </strong>. Renove para continuar.
           </p>
         </div>
         <button onClick={() => window.open('https://wa.me/5500000000000?text=Quero+renovar+EasyDrive', '_blank')}
