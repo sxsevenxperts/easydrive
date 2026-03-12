@@ -251,13 +251,42 @@ function UserList({ users, onSelect, onDelete, onBack }) {
 function UserDetail({ userId, onBack }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [grantingFree, setGrantingFree] = useState(false)
   const [tab, setTab] = useState('overview') // overview | trips | expenses | payments
 
   useEffect(() => {
+    loadData()
+  }, [userId])
+
+  async function loadData() {
+    setLoading(true)
     supabase.rpc('admin_get_user_detail', { target_user_id: userId })
       .then(({ data: d }) => setData(d))
       .finally(() => setLoading(false))
-  }, [userId])
+  }
+
+  async function grantFreeSubscription() {
+    setGrantingFree(true)
+    try {
+      const expiresAt = new Date()
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1) // 1 ano grátis
+      
+      const { error } = await adminSupabase.from('subscriptions').upsert({
+        user_id: userId,
+        status: 'active',
+        plan: 'basic',
+        expires_at: expiresAt.toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+
+      if (error) throw error
+      alert('✅ Assinatura gratuita ativada por 1 ano!')
+      await loadData()
+    } catch (err) {
+      alert('❌ Erro: ' + (err.message || 'Tente novamente'))
+    }
+    setGrantingFree(false)
+  }
 
   if (loading) return <Loading />
   if (!data) return <p style={{ color: '#ef4444', textAlign: 'center', marginTop: 40 }}>Erro ao carregar dados</p>
@@ -324,6 +353,28 @@ function UserDetail({ userId, onBack }) {
             icon={<Shield size={16} />}
             color={data.subscription?.status === 'active' ? '#22c55e' : '#ef4444'}
           />
+        </div>
+      )}
+
+      {/* Botão Assinatura Grátis — aparece na tab overview */}
+      {tab === 'overview' && (
+        <div style={{ marginTop: 14 }}>
+          <button
+            onClick={grantFreeSubscription}
+            disabled={grantingFree}
+            style={{
+              width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+              background: data.subscription?.status === 'active' ? '#1e293b' : '#22c55e',
+              color: data.subscription?.status === 'active' ? '#64748b' : '#fff',
+              fontWeight: 800, fontSize: 15, cursor: grantingFree ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              border: '1px solid',
+              borderColor: data.subscription?.status === 'active' ? '#334155' : '#22c55e',
+            }}
+          >
+            <CheckCircle size={18} />
+            {grantingFree ? 'Ativando...' : data.subscription?.status === 'active' ? '🔁 Renovar por mais 1 ano' : '🎁 Dar Assinatura Grátis (1 ano)'}
+          </button>
         </div>
       )}
 

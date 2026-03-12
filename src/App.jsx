@@ -193,9 +193,13 @@ export default function App() {
   }
 
   // ── Assinatura expirada ──
-  // (Exceto para contas de teste)
-  const isTestAccount = auth?.user?.email === 'motorista@easydrive.com'
-  if (auth?.user && auth.subscription && !auth.subscription.active && !isTestAccount) {
+  // Só bloqueia se assinatura existe e está expirada/cancelada
+  // Se não encontrou assinatura (not_found), deixa entrar como trial
+  const subBlocked = auth?.user && 
+    auth.subscription && 
+    !auth.subscription.active && 
+    auth.subscription.reason !== 'not_found'
+  if (subBlocked) {
     return <SubscriptionExpired user={auth.user} subscription={auth.subscription} onLogout={handleLogout} />
   }
 
