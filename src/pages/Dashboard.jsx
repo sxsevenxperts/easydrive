@@ -1,18 +1,30 @@
-import { useMemo, useEffect, useCallback } from 'react'
+import { useMemo, useEffect, useCallback, useState } from 'react'
 import { useStore } from '../store'
 import { fmt } from '../utils/format'
 import { calcStreak } from '../utils/gamification'
 import { usePiP } from '../hooks/usePiP'
 import SafetyCard from '../components/SafetyCard'
 import StatCard from '../components/StatCard'
+import { fetchWeather } from '../utils/weather'
 import {
   TrendingUp, Navigation, Fuel, AlertTriangle, Bell,
   Target, Flame, Lightbulb, MonitorSmartphone,
 } from 'lucide-react'
 
 export default function Dashboard({ onTab }) {
-  const { stats, settings, alerts, clearAlerts, activeTrip, tripStatus, trips, expenses } = useStore()
+  const { stats, settings, alerts, clearAlerts, activeTrip, tripStatus, trips, expenses, currentLocation } = useStore()
   const { startPiP, stopPiP, updateData, isOpen, isSupported } = usePiP()
+  const [weather, setWeather] = useState(null)
+
+  // Busca clima quando GPS disponível (refresh a cada 15 min)
+  useEffect(() => {
+    if (!currentLocation?.lat) return
+    fetchWeather(currentLocation.lat, currentLocation.lon).then(setWeather)
+    const id = setInterval(() => {
+      fetchWeather(currentLocation.lat, currentLocation.lon).then(setWeather)
+    }, 15 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [currentLocation?.lat, currentLocation?.lon])
 
   const netToday = stats.todayEarnings - (stats.todayKm / settings.fuelConsumption * settings.fuelPrice)
   const fuelToday = stats.todayKm / settings.fuelConsumption * settings.fuelPrice
@@ -112,6 +124,17 @@ export default function Dashboard({ onTab }) {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Chip de temperatura */}
+          {weather && (
+            <div style={{
+              background: 'var(--bg3, #1e293b)', border: '1px solid var(--border, #334155)',
+              borderRadius: 10, padding: '6px 10px',
+              display: 'flex', alignItems: 'center', gap: 5,
+            }} title={`${weather.label} · ${weather.tip}`}>
+              <span style={{ fontSize: 16 }}>{weather.icon}</span>
+              <span style={{ color: 'var(--text, #f1f5f9)', fontSize: 13, fontWeight: 800 }}>{weather.temp}°</span>
+            </div>
+          )}
           {streak.current > 0 && (
             <div style={{
               background: '#f97316', borderRadius: 10, padding: '6px 10px',

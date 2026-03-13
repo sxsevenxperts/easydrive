@@ -90,10 +90,14 @@ export default function ActiveTrip({ sharedRide }) {
     }
   }, [tryReadClipboard])
 
-  // ── Busca clima quando GPS disponível ─────────────────────────────────
+  // ── Busca clima quando GPS disponível + refresh a cada 15 min ────────
   useEffect(() => {
-    if (!currentLocation || weather) return
+    if (!currentLocation?.lat) return
     fetchWeather(currentLocation.lat, currentLocation.lon).then(setWeather)
+    const id = setInterval(() => {
+      fetchWeather(currentLocation.lat, currentLocation.lon).then(setWeather)
+    }, 15 * 60 * 1000)
+    return () => clearInterval(id)
   }, [currentLocation?.lat, currentLocation?.lon])
 
   // ── Busca rota OSRM quando origem+destino disponíveis ─────────────────
@@ -372,7 +376,13 @@ export default function ActiveTrip({ sharedRide }) {
           </p>
         </div>
         {weather && (
-          <span style={{ fontSize: 22 }} title={weather.label}>{weather.icon}</span>
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: 1, flexShrink: 0,
+          }} title={weather.tip}>
+            <span style={{ fontSize: 20 }}>{weather.icon}</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>{weather.temp}°C</span>
+          </div>
         )}
       </div>
 
