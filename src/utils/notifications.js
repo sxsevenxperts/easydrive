@@ -107,6 +107,13 @@ export const NOTIFY = {
     { tag: `maint-remind-${title}`, requireInteraction: false, vibrate: [300, 100, 300] }
   ),
 
+  // ⛽ Consumo piorou
+  consumptionDrop: (current, avg, pct) => sendNotification(
+    `⛽ Consumo caiu ${pct}% vs média`,
+    `Último abastecimento: ${current} km/L (média: ${avg} km/L). Verifique pneus, filtro e óleo.`,
+    { tag: 'consumption-drop', requireInteraction: false, vibrate: [300, 100, 300] }
+  ),
+
   // ⚠️ Manutenção atrasada
   maintenanceOverdue: (title, daysLate) => sendNotification(
     `⚠️ Manutenção ATRASADA: ${title}`,
@@ -210,6 +217,32 @@ export function checkGoalNotifications(trips, settings, expenses = []) {
       }
     }
   }
+}
+
+// ── VERIFICAÇÃO DE CONSUMO DE COMBUSTÍVEL ────────────────────────
+export function checkConsumptionAlerts(fuelLogs) {
+  if (!fuelLogs?.length || Notification.permission !== 'granted') return
+
+  // Apenas logs com km/L calculado (tanque cheio)
+  const measured = fuelLogs.filter((l) => l.kmPerLiter > 0).sort((a, b) => b.date - a.date)
+  if (measured.length < 2) return
+
+  const latest = measured[0]
+  const prev   = measured.slice(1, 5) // últimas 4 medições anteriores
+  const avg    = prev.reduce((a, l) => a + l.kmPerLiter, 0) / prev.length
+
+  const drop = ((avg - latest.kmPerLiter) / avg) * 100
+  if (drop < 10) return // não alerta se queda < 10%
+
+  const key = `consumption-drop-${latest.id}`
+  if (notifState[key]) return
+  notifState[key] = true
+
+  NOTIFY.consumptionDrop(
+    latest.kmPerLiter.toFixed(1),
+    avg.toFixed(1),
+    Math.round(drop)
+  )
 }
 
 // ── VERIFICAÇÃO DE MANUTENÇÕES ───────────────────────────────────

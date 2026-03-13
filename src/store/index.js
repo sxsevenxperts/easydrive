@@ -199,6 +199,32 @@ export const useStore = create((set, get) => ({
     get()._recalcStats()
   },
 
+  // ── REGISTROS DE ABASTECIMENTO ──
+  fuelLogs: saved.fuelLogs || [],
+  addFuelLog: (item) => {
+    const logs = [...get().fuelLogs].sort((a, b) => a.date - b.date)
+    // Calcular km/L em relação ao abastecimento anterior com tanque cheio
+    let kmPerLiter = null
+    let kmSinceLast = null
+    const prevFull = [...logs].reverse().find((l) => !l.partialFill && l.odometer)
+    if (prevFull && item.odometer && !item.partialFill) {
+      kmSinceLast = item.odometer - prevFull.odometer
+      if (kmSinceLast > 0 && item.liters > 0) {
+        kmPerLiter = parseFloat((kmSinceLast / item.liters).toFixed(2))
+      }
+    }
+    const log = { id: Date.now(), ...item, kmSinceLast, kmPerLiter }
+    const fuelLogs = [log, ...get().fuelLogs].slice(0, 200)
+    saveState({ fuelLogs })
+    set({ fuelLogs })
+    return log
+  },
+  deleteFuelLog: (id) => {
+    const fuelLogs = get().fuelLogs.filter((l) => l.id !== id)
+    saveState({ fuelLogs })
+    set({ fuelLogs })
+  },
+
   // ── MANUTENÇÕES ──
   maintenances: saved.maintenances || [],
   addMaintenance: (item) => {

@@ -19,6 +19,7 @@ import {
   requestNotificationPermission,
   checkGoalNotifications,
   checkMaintenanceReminders,
+  checkConsumptionAlerts,
   getPermissionStatus,
   NOTIFY,
 } from './utils/notifications'
@@ -33,7 +34,7 @@ function getInitialTab() {
 
 function MainApp({ sharedRide, user, subscription, onLogout }) {
   const [tab, setTab] = useState(getInitialTab())
-  const { trips, settings, expenses, safetyScore, maintenances, setUser } = useStore()
+  const { trips, settings, expenses, safetyScore, maintenances, fuelLogs, setUser } = useStore()
   const prevAchievementsRef = useRef(null)
   const streakNotifiedRef = useRef(null)
   useTheme()
@@ -72,6 +73,12 @@ function MainApp({ sharedRide, user, subscription, onLogout }) {
     const id = setInterval(() => checkMaintenanceReminders(maintenances), 6 * 60 * 60 * 1000)
     return () => clearInterval(id)
   }, [maintenances])
+
+  // Alerta quando consumo km/L cai vs abastecimentos anteriores
+  useEffect(() => {
+    if (getPermissionStatus() !== 'granted') return
+    checkConsumptionAlerts(fuelLogs)
+  }, [fuelLogs])
 
   // Alerta de segurança quando score cai
   useEffect(() => {
