@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { Send, MessageCircle, Users, Smile, X } from 'lucide-react'
+import { Send, MessageCircle, Users, Smile, X, Pencil, Check } from 'lucide-react'
 
 const LOAD_LIMIT = 60
 const EMOJIS = ['😊','👍','🚗','💰','🔥','😂','❤️','👏','🎉','😎','🤙','💪','🙏','✅','⚡']
@@ -26,6 +26,8 @@ function avatarColor(name = '') {
   return colors[Math.abs(hash) % colors.length]
 }
 
+const LS_NAME_KEY = 'easydrive_chat_name'
+
 export default function Chat({ user }) {
   const [messages, setMessages]     = useState([])
   const [text, setText]             = useState('')
@@ -34,12 +36,35 @@ export default function Chat({ user }) {
   const [showEmoji, setShowEmoji]   = useState(false)
   const [error, setError]           = useState(null)
   const [loading, setLoading]       = useState(true)
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput]     = useState('')
   const bottomRef  = useRef(null)
   const inputRef   = useRef(null)
+  const nameInputRef = useRef(null)
   const channelRef = useRef(null)
 
-  const myId   = user?.id
-  const myName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Motorista'
+  const myId = user?.id
+  const defaultName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Motorista'
+  const [myName, setMyName] = useState(
+    () => localStorage.getItem(LS_NAME_KEY) || defaultName
+  )
+
+  const saveName = useCallback(() => {
+    const trimmed = nameInput.trim().slice(0, 30)
+    if (trimmed) {
+      setMyName(trimmed)
+      localStorage.setItem(LS_NAME_KEY, trimmed)
+    }
+    setEditingName(false)
+  }, [nameInput])
+
+  // Focar input quando abrir edição
+  useEffect(() => {
+    if (editingName) {
+      setNameInput(myName)
+      setTimeout(() => nameInputRef.current?.focus(), 50)
+    }
+  }, [editingName, myName])
 
   // ── Carregar mensagens iniciais ────────────────────────────────────────
   useEffect(() => {
@@ -163,28 +188,96 @@ export default function Chat({ user }) {
       {/* Header */}
       <div style={{
         background: 'var(--bg)', borderBottom: '1px solid var(--border)',
-        padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12,
-        flexShrink: 0,
+        padding: '12px 16px', flexShrink: 0,
       }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <MessageCircle size={20} color='#fff' />
-        </div>
-        <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 800, letterSpacing: -0.3 }}>Chat dos Motoristas</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-            <span style={{ fontSize: 12, color: 'var(--text3)' }}>
-              {online > 0 ? `${online} online agora` : 'Sala aberta'}
-            </span>
+        {/* Linha superior: título + online */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <MessageCircle size={18} color='#fff' />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 800, letterSpacing: -0.3 }}>Chat dos Motoristas</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+                {online > 0 ? `${online} online agora` : 'Sala aberta'}
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text3)' }}>
+            <Users size={13} />
+            <span style={{ fontSize: 11 }}>{online}</span>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text3)' }}>
-          <Users size={14} />
-          <span style={{ fontSize: 12 }}>{online}</span>
+
+        {/* Linha do nome do usuário */}
+        <div style={{
+          background: 'var(--bg3)', borderRadius: 12, padding: '8px 12px',
+          border: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+            background: avatarColor(myName),
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 800, color: '#fff',
+          }}>
+            {initials(myName)}
+          </div>
+
+          {editingName ? (
+            <>
+              <input
+                ref={nameInputRef}
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }}
+                maxLength={30}
+                placeholder='Seu nome no chat'
+                style={{
+                  flex: 1, background: 'var(--bg)', border: '1px solid #3b82f6',
+                  borderRadius: 8, padding: '4px 8px', color: 'var(--text)',
+                  fontSize: 13, outline: 'none',
+                }}
+              />
+              <button
+                onClick={saveName}
+                style={{ background: '#22c55e', border: 'none', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <Check size={14} color='#fff' />
+                <span style={{ fontSize: 12, color: '#fff', fontWeight: 700 }}>Salvar</span>
+              </button>
+              <button
+                onClick={() => setEditingName(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}
+              >
+                <X size={14} />
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>Seu nome no chat</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{myName}</p>
+              </div>
+              <button
+                onClick={() => setEditingName(true)}
+                style={{
+                  background: 'none', border: '1px solid var(--border)',
+                  borderRadius: 8, padding: '5px 10px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  color: 'var(--text3)',
+                }}
+              >
+                <Pencil size={13} />
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Editar</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
