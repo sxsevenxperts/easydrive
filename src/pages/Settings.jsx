@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../store'
 import { useTheme } from '../hooks/useTheme'
 import { fmt } from '../utils/format'
-import { Save, Fuel, User, Car, DollarSign, Download, Target, Bell, BellOff, Sun, Moon, Monitor, CreditCard, LogOut, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
+import { Save, Fuel, User, Car, DollarSign, Download, Target, Bell, BellOff, Sun, Moon, Monitor, CreditCard, LogOut, Lock, Eye, EyeOff, CheckCircle, Wrench, Plus, Trash2, Calendar } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
   getPermissionStatus,
@@ -21,8 +21,20 @@ const ALL_PLATFORMS = [
   { id: 'lalamove', label: '📦 Lalamove' },
 ]
 
+const MAINT_TYPES = [
+  { id: 'oleo',     emoji: '🛢️', label: 'Troca de Óleo'    },
+  { id: 'revisao',  emoji: '🔧', label: 'Revisão Geral'    },
+  { id: 'pneu',     emoji: '🔵', label: 'Pneus'            },
+  { id: 'freio',    emoji: '🔴', label: 'Freios'           },
+  { id: 'correia',  emoji: '⚙️', label: 'Correia/Corrente' },
+  { id: 'ipva',     emoji: '📄', label: 'IPVA'             },
+  { id: 'seguro',   emoji: '🛡️', label: 'Seguro'           },
+  { id: 'vistoria', emoji: '🔍', label: 'Vistoria'         },
+  { id: 'outro',    emoji: '📋', label: 'Outro'            },
+]
+
 export default function Settings({ user, subscription, onTab, onLogout }) {
-  const { settings, updateSettings, trips, expenses } = useStore()
+  const { settings, updateSettings, trips, expenses, maintenances, addMaintenance, updateMaintenance, deleteMaintenance } = useStore()
   const { theme, setTheme } = useTheme()
   const [saved, setSaved] = useState(false)
   const [form, setForm] = useState({ ...settings })
@@ -415,6 +427,15 @@ export default function Settings({ user, subscription, onTab, onLogout }) {
         </Section>
       )}
 
+      {/* ═══════ MANUTENÇÃO PREVENTIVA ═══════ */}
+      <MaintenanceSection
+        maintenances={maintenances}
+        add={addMaintenance}
+        update={updateMaintenance}
+        del={deleteMaintenance}
+        inputStyle={inputStyle}
+      />
+
       {/* Salvar */}
       <button onClick={handleSave} style={{
         width: '100%', padding: '16px', marginBottom: 12,
@@ -471,6 +492,266 @@ export default function Settings({ user, subscription, onTab, onLogout }) {
         <p style={{ fontSize: 12, color: 'var(--text4)', textAlign: 'center', marginTop: 4 }}>{trips.length} corridas • {expenses.length} gastos registrados</p>
         {user?.email && <p style={{ fontSize: 11, color: 'var(--text4)', textAlign: 'center', marginTop: 4 }}>{user.email}</p>}
       </div>
+    </div>
+  )
+}
+
+// ── Componente de Manutenção ─────────────────────────────────────────────
+function MaintenanceSection({ maintenances, add, update, del, inputStyle }) {
+  const [showForm, setShowForm] = useState(false)
+  const [showDone, setShowDone]  = useState(false)
+  const [form, setForm] = useState({ type: 'oleo', title: '', dueDate: '', dueKm: '', reminderDays: 7, notes: '' })
+
+  const pending = maintenances.filter((m) => !m.done)
+  const done    = maintenances.filter((m) =>  m.done).slice(0, 5)
+  const now     = Date.now()
+
+  const getDaysLeft = (m) => m.dueDate ? Math.ceil((m.dueDate - now) / 86_400_000) : null
+
+  const getStatus = (m) => {
+    const d = getDaysLeft(m)
+    if (d === null) return { color: '#64748b', label: 'Sem data' }
+    if (d < 0)      return { color: '#ef4444', label: `${Math.abs(d)}d atrasado`, urgent: true }
+    if (d === 0)    return { color: '#ef4444', label: 'Hoje!',                    urgent: true }
+    if (d <= 3)     return { color: '#ef4444', label: `em ${d}d`,                 urgent: true }
+    if (d <= 7)     return { color: '#f59e0b', label: `em ${d}d` }
+    return                 { color: '#22c55e', label: `em ${d}d` }
+  }
+
+  const handleSubmit = () => {
+    const typeInfo = MAINT_TYPES.find((t) => t.id === form.type) || MAINT_TYPES[8]
+    add({
+      type:         form.type,
+      title:        form.title.trim() || typeInfo.label,
+      dueDate:      form.dueDate  ? new Date(form.dueDate).getTime() : null,
+      dueKm:        form.dueKm   ? parseInt(form.dueKm)              : null,
+      reminderDays: form.reminderDays || 7,
+      notes:        form.notes.trim(),
+    })
+    setForm({ type: 'oleo', title: '', dueDate: '', dueKm: '', reminderDays: 7, notes: '' })
+    setShowForm(false)
+  }
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Wrench size={16} color='#f59e0b' />
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Manutenção Preventiva</h2>
+          {pending.filter((m) => getStatus(m).urgent).length > 0 && (
+            <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 20 }}>
+              {pending.filter((m) => getStatus(m).urgent).length}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Lista de pendentes */}
+      {pending.length === 0 && !showForm && (
+        <div style={{
+          textAlign: 'center', padding: '18px 0',
+          color: 'var(--text3)', fontSize: 13,
+          background: 'var(--bg3)', borderRadius: 12, border: '1px solid var(--border)',
+          marginBottom: 12,
+        }}>
+          ✅ Nenhuma manutenção pendente
+        </div>
+      )}
+
+      {pending.map((m) => {
+        const status   = getStatus(m)
+        const typeInfo = MAINT_TYPES.find((t) => t.id === m.type) || MAINT_TYPES[8]
+        return (
+          <div key={m.id} style={{
+            background: status.urgent ? '#ef444410' : 'var(--bg3)',
+            border: `1px solid ${status.urgent ? '#ef444450' : 'var(--border)'}`,
+            borderRadius: 14, padding: '12px 14px', marginBottom: 10,
+          }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 26, flexShrink: 0, lineHeight: 1 }}>{typeInfo.emoji}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
+                  <span style={{
+                    fontSize: 11, fontWeight: 800, color: status.color,
+                    background: `${status.color}25`, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
+                  }}>{status.label}</span>
+                </div>
+                {m.dueDate && (
+                  <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Calendar size={11} />
+                    {new Date(m.dueDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {m.dueKm ? ` · 🛣️ ${m.dueKm.toLocaleString('pt-BR')} km` : ''}
+                  </p>
+                )}
+                {m.notes ? <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 3, fontStyle: 'italic' }}>{m.notes}</p> : null}
+                <p style={{ fontSize: 11, color: 'var(--text4)', marginTop: 3 }}>
+                  🔔 Lembrete {m.reminderDays} dia{m.reminderDays !== 1 ? 's' : ''} antes
+                </p>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button
+                    onClick={() => update(m.id, { done: true, doneDate: Date.now() })}
+                    style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, color: '#22c55e', background: '#22c55e15', border: '1px solid #22c55e40', borderRadius: 8, cursor: 'pointer' }}
+                  >
+                    ✓ Concluído
+                  </button>
+                  <button
+                    onClick={() => del(m.id)}
+                    style={{ padding: '7px 12px', fontSize: 12, color: '#ef4444', background: '#ef444415', border: '1px solid #ef444430', borderRadius: 8, cursor: 'pointer' }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Formulário */}
+      {showForm && (
+        <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Nova manutenção</p>
+
+          {/* Tipo */}
+          <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Tipo</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
+            {MAINT_TYPES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setForm((f) => ({ ...f, type: t.id, title: f.title || t.label }))}
+                style={{
+                  padding: '8px 4px', fontSize: 10, fontWeight: 700,
+                  background: form.type === t.id ? '#f59e0b20' : 'var(--bg)',
+                  border: `2px solid ${form.type === t.id ? '#f59e0b' : 'var(--border)'}`,
+                  borderRadius: 10, cursor: 'pointer',
+                  color: form.type === t.id ? '#f59e0b' : 'var(--text3)',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  textAlign: 'center', lineHeight: 1.2,
+                }}
+              >
+                <span style={{ fontSize: 20 }}>{t.emoji}</span>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Descrição</p>
+          <input
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            style={inputStyle}
+            placeholder={MAINT_TYPES.find((t) => t.id === form.type)?.label || 'Ex: Troca de óleo 10W40'}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Data prevista</p>
+              <input
+                type='date'
+                value={form.dueDate}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                style={{ ...inputStyle, marginBottom: 14 }}
+              />
+            </div>
+            <div>
+              <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Km previsto</p>
+              <input
+                type='number'
+                value={form.dueKm}
+                onChange={(e) => setForm((f) => ({ ...f, dueKm: e.target.value }))}
+                style={{ ...inputStyle, marginBottom: 14 }}
+                placeholder='Ex: 50000'
+              />
+            </div>
+          </div>
+
+          <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>🔔 Lembrar quantos dias antes?</p>
+          <input
+            type='number'
+            value={form.reminderDays}
+            onChange={(e) => setForm((f) => ({ ...f, reminderDays: parseInt(e.target.value) || 7 }))}
+            style={inputStyle}
+            min='1' max='30'
+            placeholder='7'
+          />
+
+          <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Observações (opcional)</p>
+          <textarea
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            style={{ ...inputStyle, resize: 'none', minHeight: 64 }}
+            placeholder='Ex: Usar óleo 10W40 semi-sintético, trocar filtro também'
+            rows={2}
+          />
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => setShowForm(false)}
+              style={{ flex: 1, padding: 13, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text2)', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!form.dueDate && !form.dueKm}
+              style={{ flex: 2, padding: 13, background: form.dueDate || form.dueKm ? '#f59e0b' : '#64748b', border: 'none', borderRadius: 10, color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+            >
+              Salvar manutenção
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Botão adicionar */}
+      {!showForm && (
+        <button
+          onClick={() => setShowForm(true)}
+          style={{
+            width: '100%', padding: '13px',
+            background: '#f59e0b15', border: '1px dashed #f59e0b60',
+            borderRadius: 12, color: '#f59e0b', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10,
+          }}
+        >
+          <Plus size={16} />
+          Agendar manutenção
+        </button>
+      )}
+
+      {/* Histórico concluído */}
+      {done.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowDone((v) => !v)}
+            style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 12, cursor: 'pointer', padding: '4px 0', marginBottom: 6 }}
+          >
+            {showDone ? '▲' : '▶'} Histórico ({done.length} concluídas)
+          </button>
+          {showDone && done.map((m) => {
+            const typeInfo = MAINT_TYPES.find((t) => t.id === m.type) || MAINT_TYPES[8]
+            return (
+              <div key={m.id} style={{
+                display: 'flex', gap: 10, alignItems: 'center',
+                padding: '8px 10px', marginBottom: 6,
+                background: 'var(--bg3)', borderRadius: 10, opacity: 0.65,
+              }}>
+                <span style={{ fontSize: 18 }}>{typeInfo.emoji}</span>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600 }}>{m.title}</p>
+                  <p style={{ fontSize: 11, color: 'var(--text3)' }}>
+                    ✅ {m.doneDate ? new Date(m.doneDate).toLocaleDateString('pt-BR') : '—'}
+                  </p>
+                </div>
+                <button onClick={() => del(m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text4)', padding: 4 }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

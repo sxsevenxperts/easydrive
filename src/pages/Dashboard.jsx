@@ -8,11 +8,11 @@ import StatCard from '../components/StatCard'
 import { fetchWeather } from '../utils/weather'
 import {
   TrendingUp, Navigation, Fuel, AlertTriangle, Bell,
-  Target, Flame, Lightbulb, MonitorSmartphone,
+  Target, Flame, Lightbulb, MonitorSmartphone, Wrench,
 } from 'lucide-react'
 
 export default function Dashboard({ onTab }) {
-  const { stats, settings, alerts, clearAlerts, activeTrip, tripStatus, trips, expenses, currentLocation } = useStore()
+  const { stats, settings, alerts, clearAlerts, activeTrip, tripStatus, trips, expenses, currentLocation, maintenances } = useStore()
   const { startPiP, stopPiP, updateData, isOpen, isSupported } = usePiP()
   const [weather, setWeather] = useState(null)
 
@@ -88,6 +88,21 @@ export default function Dashboard({ onTab }) {
 
   const hasGoals = settings.goalDailyRevenue || settings.goalDailyProfit
 
+  // ── MANUTENÇÕES URGENTES ────────────────────────────────────────
+  const urgentMaintenances = useMemo(() => {
+    const now = Date.now()
+    return (maintenances || []).filter((m) => {
+      if (m.done || !m.dueDate) return false
+      const daysLeft = Math.ceil((m.dueDate - now) / 86_400_000)
+      return daysLeft <= (m.reminderDays ?? 7)
+    }).sort((a, b) => (a.dueDate || 0) - (b.dueDate || 0))
+  }, [maintenances])
+
+  // ── KM DO DIA + CUSTO/KM ────────────────────────────────────────
+  const todayCostPerKm = stats.todayKm > 0
+    ? (stats.todayKm / (settings.fuelConsumption || 35)) * (settings.fuelPrice || 6) / stats.todayKm
+    : settings.fuelPrice / (settings.fuelConsumption || 35)
+
   // ── DADOS PARA HUD PiP ──────────────────────────────────────────
   const pipData = useMemo(() => ({
     earnings: stats.todayEarnings,
@@ -162,6 +177,37 @@ export default function Dashboard({ onTab }) {
           )}
         </div>
       </div>
+
+      {/* ── Alertas de manutenção urgente ── */}
+      {urgentMaintenances.length > 0 && (
+        <div
+          onClick={() => onTab('settings')}
+          style={{
+            background: '#f59e0b10', border: '1px solid #f59e0b50',
+            borderRadius: 14, padding: '12px 16px', marginBottom: 14, cursor: 'pointer',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Wrench size={15} color='#f59e0b' />
+            <p style={{ fontWeight: 700, fontSize: 14, color: '#f59e0b' }}>
+              {urgentMaintenances.length} manutenção{urgentMaintenances.length > 1 ? 'ões' : ''} pendente{urgentMaintenances.length > 1 ? 's' : ''}
+            </p>
+          </div>
+          {urgentMaintenances.slice(0, 2).map((m) => {
+            const daysLeft = Math.ceil((m.dueDate - Date.now()) / 86_400_000)
+            return (
+              <p key={m.id} style={{ fontSize: 12, color: 'var(--text3)', marginTop: 3 }}>
+                {daysLeft < 0
+                  ? `⚠️ ${m.title} — ${Math.abs(daysLeft)}d atrasada`
+                  : daysLeft === 0
+                  ? `🔴 ${m.title} — hoje!`
+                  : `🔧 ${m.title} — em ${daysLeft}d`}
+              </p>
+            )
+          })}
+          <p style={{ fontSize: 11, color: '#f59e0b80', marginTop: 6 }}>Toque para gerenciar →</p>
+        </div>
+      )}
 
       {/* Alerta de viagem ativa */}
       {activeTrip && (
@@ -252,8 +298,8 @@ export default function Dashboard({ onTab }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
         <StatCard icon='💰' label='Ganhos brutos' value={fmt.currency(stats.todayEarnings)} color='#22c55e' />
         <StatCard icon='🟢' label='Líquido' value={fmt.currency(netToday)} color={netToday >= 0 ? '#22c55e' : '#ef4444'} />
-        <StatCard icon='🛣️' label='Quilômetros' value={fmt.km(stats.todayKm)} color='#3b82f6' />
-        <StatCard icon='⛽' label='Combustível' value={fmt.currency(fuelToday)} color='#f97316' />
+        <StatCard icon='🛣️' label='KM rodados hoje' value={fmt.km(stats.todayKm)} color='#3b82f6' />
+        <StatCard icon='⛽' label='Custo/km (hoje)' value={`R$ ${todayCostPerKm.toFixed(3)}`} color='#f97316' sub={`${settings.fuelConsumption || 35} km/L`} />
       </div>
 
       {/* ═══════ ECONOMIA POTENCIAL ═══════ */}

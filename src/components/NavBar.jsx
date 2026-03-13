@@ -10,8 +10,12 @@ const tabs = [
 ]
 
 export default function NavBar({ active, onTab }) {
-  const { alerts, activeTrip, tripStatus } = useStore()
+  const { alerts, activeTrip, tripStatus, maintenances } = useStore()
   const hasAlert = alerts.length > 0 && alerts[0]?.type === 'danger'
+  const now = Date.now()
+  const hasMaintAlert = (maintenances || []).some((m) =>
+    !m.done && m.dueDate && Math.ceil((m.dueDate - now) / 86_400_000) <= (m.reminderDays ?? 7)
+  )
 
   return (
     <nav style={{
@@ -54,6 +58,13 @@ export default function NavBar({ active, onTab }) {
                   position: 'absolute', top: -4, right: -4,
                   width: 8, height: 8, borderRadius: '50%',
                   background: '#ef4444', border: '1px solid var(--bg)',
+                }} />
+              )}
+              {id === 'settings' && hasMaintAlert && (
+                <span style={{
+                  position: 'absolute', top: -4, right: -4,
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: '#f59e0b', border: '1px solid var(--bg)',
                 }} />
               )}
             </div>

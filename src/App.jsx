@@ -18,6 +18,7 @@ import {
   registerServiceWorker,
   requestNotificationPermission,
   checkGoalNotifications,
+  checkMaintenanceReminders,
   getPermissionStatus,
   NOTIFY,
 } from './utils/notifications'
@@ -32,7 +33,7 @@ function getInitialTab() {
 
 function MainApp({ sharedRide, user, subscription, onLogout }) {
   const [tab, setTab] = useState(getInitialTab())
-  const { trips, settings, expenses, safetyScore, setUser } = useStore()
+  const { trips, settings, expenses, safetyScore, maintenances, setUser } = useStore()
   const prevAchievementsRef = useRef(null)
   const streakNotifiedRef = useRef(null)
   useTheme()
@@ -63,6 +64,14 @@ function MainApp({ sharedRide, user, subscription, onLogout }) {
     const id = setInterval(() => checkGoalNotifications(trips, settings, expenses), 60 * 60 * 1000)
     return () => clearInterval(id)
   }, [trips, settings, expenses])
+
+  // Checa manutenções pendentes (no app open + a cada 6h)
+  useEffect(() => {
+    if (getPermissionStatus() !== 'granted') return
+    checkMaintenanceReminders(maintenances)
+    const id = setInterval(() => checkMaintenanceReminders(maintenances), 6 * 60 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [maintenances])
 
   // Alerta de segurança quando score cai
   useEffect(() => {

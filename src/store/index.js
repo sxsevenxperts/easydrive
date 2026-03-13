@@ -199,6 +199,25 @@ export const useStore = create((set, get) => ({
     get()._recalcStats()
   },
 
+  // ── MANUTENÇÕES ──
+  maintenances: saved.maintenances || [],
+  addMaintenance: (item) => {
+    const m = { id: Date.now(), done: false, createdAt: Date.now(), ...item }
+    const maintenances = [m, ...get().maintenances]
+    saveState({ maintenances })
+    set({ maintenances })
+  },
+  updateMaintenance: (id, data) => {
+    const maintenances = get().maintenances.map((m) => m.id === id ? { ...m, ...data } : m)
+    saveState({ maintenances })
+    set({ maintenances })
+  },
+  deleteMaintenance: (id) => {
+    const maintenances = get().maintenances.filter((m) => m.id !== id)
+    saveState({ maintenances })
+    set({ maintenances })
+  },
+
   // ── ESTATÍSTICAS ──
   stats: saved.stats || defaultStats,
   _recalcStats: () => {

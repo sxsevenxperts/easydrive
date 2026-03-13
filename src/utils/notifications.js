@@ -99,6 +99,22 @@ export const NOTIFY = {
     message,
     { tag: 'safety-alert', requireInteraction: true, vibrate: [500, 200, 500] }
   ),
+
+  // 🔧 Manutenção próxima
+  maintenanceReminder: (title, daysLeft) => sendNotification(
+    `🔧 Manutenção em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`,
+    `${title} está se aproximando. Agende já para não perder o prazo!`,
+    { tag: `maint-remind-${title}`, requireInteraction: false, vibrate: [300, 100, 300] }
+  ),
+
+  // ⚠️ Manutenção atrasada
+  maintenanceOverdue: (title, daysLate) => sendNotification(
+    `⚠️ Manutenção ATRASADA: ${title}`,
+    daysLate > 0
+      ? `Passou ${daysLate} dia${daysLate !== 1 ? 's' : ''} do prazo previsto. Providencie urgente!`
+      : `A data prevista passou. Providencie o quanto antes!`,
+    { tag: `maint-overdue-${title}`, requireInteraction: true, vibrate: [500, 200, 500, 200, 500] }
+  ),
 }
 
 // ── VERIFICAÇÃO AUTOMÁTICA DE METAS ─────────────────────────────
@@ -194,6 +210,31 @@ export function checkGoalNotifications(trips, settings, expenses = []) {
       }
     }
   }
+}
+
+// ── VERIFICAÇÃO DE MANUTENÇÕES ───────────────────────────────────
+export function checkMaintenanceReminders(maintenances) {
+  if (!maintenances?.length || Notification.permission !== 'granted') return
+
+  const now  = Date.now()
+  const today = new Date().toDateString()
+
+  maintenances.forEach((m) => {
+    if (m.done || !m.dueDate) return
+    const msLeft     = m.dueDate - now
+    const daysLeft   = Math.ceil(msLeft / 86_400_000)
+    const remDays    = m.reminderDays ?? 7
+    const key        = `maint-${m.id}-${today}`
+    if (notifState[key]) return
+
+    if (daysLeft < 0) {
+      notifState[key] = true
+      NOTIFY.maintenanceOverdue(m.title, Math.abs(daysLeft))
+    } else if (daysLeft <= remDays) {
+      notifState[key] = true
+      NOTIFY.maintenanceReminder(m.title, daysLeft)
+    }
+  })
 }
 
 // ── REGISTRAR SERVICE WORKER ─────────────────────────────────────
