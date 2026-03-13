@@ -9,7 +9,55 @@ import {
 import {
   CalendarDays, TrendingUp, Fuel, Clock, Navigation,
   Trophy, Flame, Target, Star, Medal, Zap, Droplet, Plus, Trash2, AlertTriangle,
+  MapPin, ExternalLink,
 } from 'lucide-react'
+
+// ── HOTSPOT HELPERS ──────────────────────────────────────────────
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function buildHotspots(trips, radiusKm = 0.4) {
+  const clusters = []
+  trips.forEach((trip) => {
+    const loc = trip.pickupLocation
+    if (!loc?.lat || !loc?.lng) return
+    const { lat, lng } = loc
+    let best = null, bestDist = Infinity
+    clusters.forEach((c) => {
+      const d = haversineKm(c.lat, c.lng, lat, lng)
+      if (d < bestDist) { best = c; bestDist = d }
+    })
+    const addr = loc.address || loc.street || loc.neighborhood || null
+    if (best && bestDist <= radiusKm) {
+      const n = best.count
+      best.lat = (best.lat * n + lat) / (n + 1)
+      best.lng = (best.lng * n + lng) / (n + 1)
+      best.count++
+      best.earnings += trip.earnings || 0
+      // Keep longest/most descriptive address
+      if (addr && addr.length > (best.label?.length || 0)) best.label = addr
+    } else {
+      clusters.push({ lat, lng, count: 1, earnings: trip.earnings || 0, label: addr || `${lat.toFixed(4)}, ${lng.toFixed(4)}` })
+    }
+  })
+  return clusters.sort((a, b) => b.count - a.count).slice(0, 12)
+}
+
+function buildPeakHours(trips) {
+  const hours = Array(24).fill(0).map((_, h) => ({ hour: h, count: 0, earnings: 0 }))
+  trips.forEach((trip) => {
+    const h = new Date(trip.startTime).getHours()
+    hours[h].count++
+    hours[h].earnings += trip.earnings || 0
+  })
+  return hours
+}
 
 // Presets de período
 const PERIODS = [
@@ -19,12 +67,13 @@ const PERIODS = [
   { id: 'custom', label: 'Personalizado' },
 ]
 
-// Tabs: Lucro | Gráficos | Combustível | Conquistas
+// Tabs: Lucro | Pontos | Gráficos | Combustível | Conquistas
 const TABS = [
-  { id: 'profits',      label: 'Lucro',       icon: TrendingUp },
-  { id: 'charts',       label: 'Gráficos',    icon: CalendarDays },
+  { id: 'profits',      label: 'Lucro',    icon: TrendingUp },
+  { id: 'hotspots',     label: 'Pontos',   icon: MapPin },
+  { id: 'charts',       label: 'Gráficos', icon: CalendarDays },
   { id: 'fuel',         label: 'Combustível', icon: Fuel },
-  { id: 'achievements', label: 'Conquistas',  icon: Trophy },
+  { id: 'achievements', label: 'Conquistas', icon: Trophy },
 ]
 
 function dateKey(ts) {
@@ -66,6 +115,9 @@ export default function Stats() {
   const [period, setPeriod] = useState('7d')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]     = useState('')
+
+  // ── Estado dos hotspots ───────────────────────────────────────
+  const [hsPeriod, setHsPeriod] = useState('week') // 'today' | 'week' | 'month'
 
   // ── Estado do formulário de abastecimento ─────────────────────
   const [showFuelForm, setShowFuelForm] = useState(false)
@@ -147,6 +199,24 @@ export default function Stats() {
     fuel: parseFloat(d.fuel.toFixed(2)),
     waitTime: Math.round(d.waitTime),
   }))
+
+  // ── HOTSPOTS E HORÁRIO DE PICO ───────────────────────────────────
+  const { hotspots, peakHours, tripsWithLocation, totalHsTrips } = useMemo(() => {
+    const now = Date.now()
+    const cutoff = hsPeriod === 'today'
+      ? new Date().setHours(0, 0, 0, 0)
+      : hsPeriod === 'week'
+        ? now - 7 * 86_400_000
+        : now - 30 * 86_400_000
+    const filtered = trips.filter((t) => (t.endTime || t.startTime) >= cutoff)
+    const withLoc = filtered.filter((t) => t.pickupLocation?.lat)
+    return {
+      hotspots: buildHotspots(withLoc),
+      peakHours: buildPeakHours(filtered),
+      tripsWithLocation: withLoc.length,
+      totalHsTrips: filtered.length,
+    }
+  }, [trips, hsPeriod])
 
   // ── DADOS DE CONSUMO (aba Combustível) ───────────────────────────
   const fuelPeriodDays = fuelPeriod === '7d' ? 7 : fuelPeriod === '30d' ? 30 : 90
@@ -396,26 +466,26 @@ export default function Stats() {
       <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>Análise e conquistas</p>
 
       {/* Tabs: Gráficos | Conquistas */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#1e293b', borderRadius: 12, padding: 4 }}>
+      <div style={{ display: 'flex', gap: 3, marginBottom: 20, background: '#1e293b', borderRadius: 12, padding: 4 }}>
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             style={{
-              flex: 1, padding: '9px 0',
+              flex: 1, padding: '8px 0',
               background: tab === t.id ? '#22c55e20' : 'transparent',
               border: tab === t.id ? '1px solid #22c55e50' : '1px solid transparent',
-              borderRadius: 10, color: tab === t.id ? '#22c55e' : '#64748b',
-              fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              borderRadius: 9, color: tab === t.id ? '#22c55e' : '#64748b',
+              fontSize: 10, fontWeight: 700, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexDirection: 'column', gap: 3,
+              flexDirection: 'column', gap: 2,
             }}
           >
-            <t.icon size={14} />
-            <span>{t.label}</span>
+            <t.icon size={13} />
+            <span style={{ lineHeight: 1.2, textAlign: 'center' }}>{t.label}</span>
             {t.id === 'achievements' && <span style={{
-              background: '#22c55e', color: '#000', fontSize: 9,
-              fontWeight: 800, borderRadius: 8, padding: '1px 5px', marginTop: -1,
+              background: '#22c55e', color: '#000', fontSize: 8,
+              fontWeight: 800, borderRadius: 8, padding: '1px 4px', marginTop: -1,
             }}>{unlockedCount}</span>}
           </button>
         ))}
@@ -734,6 +804,151 @@ export default function Stats() {
           </div>
         </>
       )}
+
+      {/* ═══════ TAB: PONTOS QUENTES ═══════ */}
+      {tab === 'hotspots' && (() => {
+        const maxCount = hotspots[0]?.count || 1
+        const maxPeak  = Math.max(...peakHours.map((h) => h.count), 1)
+        const medals   = ['🥇', '🥈', '🥉']
+        const fmtR     = (v) => `R$ ${v.toFixed(2).replace('.', ',')}`
+        const topPeak  = [...peakHours].sort((a, b) => b.count - a.count).slice(0, 3)
+
+        return (
+          <>
+            {/* Seletor de período */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {[
+                { id: 'today', label: 'Hoje' },
+                { id: 'week',  label: '7 dias' },
+                { id: 'month', label: '30 dias' },
+              ].map((pp) => (
+                <button key={pp.id} onClick={() => setHsPeriod(pp.id)}
+                  style={{
+                    flex: 1, padding: '9px 0',
+                    background: hsPeriod === pp.id ? '#22c55e20' : '#1e293b',
+                    border: `1px solid ${hsPeriod === pp.id ? '#22c55e' : '#334155'}`,
+                    borderRadius: 20, color: hsPeriod === pp.id ? '#22c55e' : '#64748b',
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >{pp.label}</button>
+              ))}
+            </div>
+
+            {/* Horários de pico */}
+            <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>
+                🕐 Horários de maior demanda
+              </p>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 64 }}>
+                {peakHours.map((h) => {
+                  const pct = (h.count / maxPeak) * 100
+                  const isPeak = topPeak.some((p) => p.hour === h.hour)
+                  return (
+                    <div key={h.hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <div style={{
+                        width: '100%', borderRadius: '3px 3px 0 0',
+                        background: isPeak ? '#22c55e' : '#334155',
+                        height: `${Math.max(pct * 0.9, h.count > 0 ? 5 : 1)}%`,
+                        minHeight: h.count > 0 ? 4 : 1,
+                        transition: 'height 0.4s ease',
+                      }} />
+                      {h.hour % 6 === 0 && (
+                        <span style={{ fontSize: 9, color: '#475569' }}>{h.hour}h</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                {topPeak.filter((p) => p.count > 0).map((p, i) => (
+                  <span key={p.hour} style={{
+                    fontSize: 12, fontWeight: 700, padding: '4px 10px',
+                    background: '#22c55e20', border: '1px solid #22c55e50',
+                    borderRadius: 20, color: '#22c55e',
+                  }}>
+                    {medals[i]} {p.hour}:00–{p.hour + 1}:00 ({p.count} corridas)
+                  </span>
+                ))}
+                {topPeak.every((p) => p.count === 0) && (
+                  <span style={{ fontSize: 12, color: '#475569' }}>Sem dados no período</span>
+                )}
+              </div>
+            </div>
+
+            {/* Ranking de hotspots */}
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>
+              📍 Ranking de locais com mais embarques
+            </p>
+
+            {tripsWithLocation === 0 ? (
+              <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 14, padding: 24, textAlign: 'center' }}>
+                <span style={{ fontSize: 40 }}>📡</span>
+                <p style={{ fontWeight: 700, color: '#f1f5f9', marginTop: 10, marginBottom: 4 }}>
+                  Sem dados de localização
+                </p>
+                <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                  {totalHsTrips > 0
+                    ? `${totalHsTrips} corridas no período, mas sem GPS registrado. Use o modo rastreado (GPS ativo) para mapear os pontos de embarque.`
+                    : 'Complete corridas com GPS ativo para ver os pontos de maior demanda.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <p style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>
+                  {tripsWithLocation} de {totalHsTrips} corridas com localização registrada
+                </p>
+                {hotspots.map((hs, i) => (
+                  <div key={i} style={{
+                    background: i < 3 ? `#22c55e${i === 0 ? '18' : i === 1 ? '10' : '08'}` : '#1e293b',
+                    border: `1px solid ${i < 3 ? '#22c55e40' : '#334155'}`,
+                    borderRadius: 12, padding: '12px 14px', marginBottom: 8,
+                  }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: i < 3 ? 22 : 16, flexShrink: 0 }}>
+                        {i < 3 ? medals[i] : `#${i + 1}`}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {hs.label}
+                        </p>
+                        <p style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
+                          {hs.count} embarques · Média {fmtR(hs.earnings / hs.count)}/corrida
+                        </p>
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps?q=${hs.lat},${hs.lng}`}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        style={{ color: '#3b82f6', flexShrink: 0 }}
+                        title='Ver no Google Maps'
+                      >
+                        <ExternalLink size={14} />
+                      </a>
+                    </div>
+                    {/* Barra de popularidade */}
+                    <div style={{ height: 5, borderRadius: 3, background: '#0f172a', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${(hs.count / maxCount) * 100}%`,
+                        background: i === 0 ? '#22c55e' : i === 1 ? '#3b82f6' : i === 2 ? '#f59e0b' : '#475569',
+                        borderRadius: 3, transition: 'width 0.5s ease',
+                      }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                      <span style={{ fontSize: 10, color: '#475569' }}>
+                        {hs.count} embarques · {fmtR(hs.earnings)} total
+                      </span>
+                      <span style={{ fontSize: 10, color: '#475569' }}>
+                        {Math.round((hs.count / maxCount) * 100)}% do líder
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )
+      })()}
 
       {/* ═══════ TAB: GRÁFICOS ═══════ */}
       {tab === 'charts' && (
