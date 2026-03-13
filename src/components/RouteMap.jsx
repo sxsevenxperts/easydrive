@@ -22,6 +22,7 @@ export default function RouteMap({
   const markerDestRef      = useRef(null)
   const currentLocationRef = useRef(currentLocation)
   const [following, setFollowing] = useState(true)
+  const [mapReady, setMapReady]   = useState(false)  // sinaliza que Leaflet carregou
 
   // Ref sempre atualizado (evita stale closure no init async)
   useEffect(() => { currentLocationRef.current = currentLocation }, [currentLocation])
@@ -76,6 +77,8 @@ export default function RouteMap({
         destIcon:   makeIcon('#ef4444', 16, true),
       }
 
+      setMapReady(true)   // dispara os effects que dependem do mapa
+
       // Posição inicial via ref (já pode ter GPS)
       const loc = currentLocationRef.current
       if (loc?.lat) {
@@ -107,7 +110,7 @@ export default function RouteMap({
 
   // ── Atualiza posição atual ──────────────────────────────────────────────
   useEffect(() => {
-    if (!instanceRef.current || !currentLocation) return
+    if (!mapReady || !instanceRef.current || !currentLocation) return
     const { map, L, currentIcon } = instanceRef.current
 
     if (!markerCurrentRef.current) {
@@ -122,11 +125,11 @@ export default function RouteMap({
     if (following) {
       map.panTo([currentLocation.lat, currentLocation.lon], { animate: true, duration: 0.6 })
     }
-  }, [currentLocation, following])
+  }, [currentLocation, following, mapReady])
 
   // ── Trilha GPS percorrida ───────────────────────────────────────────────
   useEffect(() => {
-    if (!instanceRef.current || route.length < 2) return
+    if (!mapReady || !instanceRef.current || route.length < 2) return
     const { map, L } = instanceRef.current
     const latlngs = route.map((p) => [p.lat, p.lon])
 
@@ -138,11 +141,11 @@ export default function RouteMap({
     } else {
       trailRef.current.setLatLngs(latlngs)
     }
-  }, [route])
+  }, [route, mapReady])
 
   // ── Rotas planejadas (OSRM) ─────────────────────────────────────────────
   useEffect(() => {
-    if (!instanceRef.current) return
+    if (!mapReady || !instanceRef.current) return
     const { map, L } = instanceRef.current
 
     // Limpa polilinhas antigas
@@ -173,11 +176,11 @@ export default function RouteMap({
         map.fitBounds(rec.points, { padding: [40, 40], maxZoom: 16 })
       } catch {}
     }
-  }, [plannedRoutes])
+  }, [plannedRoutes, mapReady])
 
   // ── Marcador de origem ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!instanceRef.current || !pickupLocation?.lat) return
+    if (!mapReady || !instanceRef.current || !pickupLocation?.lat) return
     const { map, L, pickupIcon } = instanceRef.current
 
     if (!markerPickupRef.current) {
@@ -188,11 +191,11 @@ export default function RouteMap({
     } else {
       markerPickupRef.current.setLatLng([pickupLocation.lat, pickupLocation.lon])
     }
-  }, [pickupLocation?.lat, pickupLocation?.lon])
+  }, [pickupLocation?.lat, pickupLocation?.lon, mapReady])
 
   // ── Marcador de destino ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!instanceRef.current || !destination?.lat) return
+    if (!mapReady || !instanceRef.current || !destination?.lat) return
     const { map, L, destIcon } = instanceRef.current
 
     if (!markerDestRef.current) {
@@ -215,7 +218,7 @@ export default function RouteMap({
         m.fitBounds(bounds, { padding: [40, 40] })
       } catch {}
     }
-  }, [destination?.lat, destination?.lon])
+  }, [destination?.lat, destination?.lon, mapReady])
 
   // ── Botão "Localizar" ──────────────────────────────────────────────────
   const handleLocate = () => {
