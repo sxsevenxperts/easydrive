@@ -73,6 +73,10 @@ export default function ActiveTrip({ sharedRide }) {
   // Clima
   const [weather, setWeather] = useState(null)
 
+  // Compartilhar Viagem ao Vivo
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareContact, setShareContact] = useState('')
+
   // ── Clipboard / Share monitoring ──────────────────────────────────────
   const tryReadClipboard = useCallback(async () => {
     try {
@@ -230,6 +234,45 @@ export default function ActiveTrip({ sharedRide }) {
     setEarningsInput(''); setShowFinish(false); setDestQuery(''); setDestResults([])
     setRouteInfo(null)
   }
+
+  // ── Compartilhar Viagem ao Vivo ────────────────────────────────────────
+  const generateShareLink = useCallback(() => {
+    if (!currentLocation?.lat) return null
+    const mapsUrl = `https://maps.google.com/?q=${currentLocation.lat},${currentLocation.lon}`
+    return mapsUrl
+  }, [currentLocation])
+
+  const handleShareTrip = useCallback(async () => {
+    if (!currentLocation?.lat || !shareContact.trim()) return
+
+    const link = generateShareLink()
+    if (!link) return
+
+    const destName = activeTrip?.destination?.address?.split(',')[0] || 'Destino'
+    const msg = `Estou compartilhando minha localização ao vivo da viagem:\n\n📍 Destino: ${destName}\n🚗 Rastreando em tempo real\n\n${link}`
+
+    try {
+      // Copia link para clipboard
+      await navigator.clipboard.writeText(link)
+      useStore.getState().addAlert({
+        type: 'success',
+        title: '📋 Link copiado!',
+        body: 'Link de localização copiado para clipboard',
+        duration: 3000,
+      })
+
+      // Abre WhatsApp se número fornecido
+      if (shareContact.match(/^\d+$/)) {
+        const whatsappUrl = `https://wa.me/${shareContact}?text=${encodeURIComponent(msg)}`
+        window.open(whatsappUrl, '_blank')
+      }
+
+      setShowShareModal(false)
+      setShareContact('')
+    } catch (err) {
+      console.error('Share error:', err)
+    }
+  }, [currentLocation, shareContact, activeTrip?.destination?.address, generateShareLink])
 
   const handleDestInput = useCallback((text) => {
     setDestQuery(text); setDestResults([])
@@ -533,6 +576,124 @@ export default function ActiveTrip({ sharedRide }) {
           navigating={tripStatus === 'trip'}
         />
       </div>
+
+      {/* Compartilhar Viagem ao Vivo */}
+      {tripStatus === 'trip' && currentLocation?.lat && (
+        <div style={{ marginBottom: 12 }}>
+          <button
+            onClick={() => setShowShareModal(true)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              background: '#10b98115',
+              border: '1px solid #10b98140',
+              borderRadius: 12,
+              color: '#10b981',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              fontSize: 14,
+            }}
+          >
+            📍 Compartilhar Viagem ao Vivo
+          </button>
+        </div>
+      )}
+
+      {/* Modal Compartilhar */}
+      {showShareModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'flex-end',
+          zIndex: 9998,
+        }} onClick={() => setShowShareModal(false)}>
+          <div style={{
+            width: '100%',
+            maxHeight: '90vh',
+            background: 'var(--bg)',
+            borderRadius: '20px 20px 0 0',
+            padding: '20px 16px 32px',
+            overflow: 'auto',
+          }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: 'var(--text)' }}>
+              📍 Compartilhar Localização ao Vivo
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20, lineHeight: 1.5 }}>
+              Compartilhe um link com sua localização em tempo real via WhatsApp
+            </p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', display: 'block', marginBottom: 8 }}>
+                Número WhatsApp (com código país, ex: 5511999999999)
+              </label>
+              <input
+                type='tel'
+                value={shareContact}
+                onChange={(e) => setShareContact(e.target.value)}
+                placeholder='5511999999999 ou deixe vazio'
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'var(--bg3)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 10,
+                  color: 'var(--text)',
+                  fontSize: 14,
+                  boxSizing: 'border-box',
+                  marginBottom: 4,
+                }}
+              />
+              <p style={{ fontSize: 11, color: 'var(--text3)' }}>
+                Deixe em branco para apenas copiar o link
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => { setShowShareModal(false); setShareContact('') }}
+                style={{
+                  flex: 1,
+                  padding: 13,
+                  background: 'var(--bg3)',
+                  border: 'none',
+                  borderRadius: 12,
+                  color: 'var(--text2)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleShareTrip}
+                disabled={!currentLocation?.lat}
+                style={{
+                  flex: 1.5,
+                  padding: 13,
+                  background: '#10b981',
+                  border: 'none',
+                  borderRadius: 12,
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  opacity: currentLocation?.lat ? 1 : 0.5,
+                }}
+              >
+                ✓ Compartilhar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Despesas Rápidas (durante viagem) */}
       {tripStatus === 'trip' && (
