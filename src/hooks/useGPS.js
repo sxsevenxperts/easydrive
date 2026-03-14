@@ -33,6 +33,10 @@ function onPosition(pos) {
   const loc = { lat, lon, accuracy, ts }
   const store = useStore.getState()
 
+  // ⚡ SEMPRE atualiza location — nenhum throttle/debounce aqui!
+  // Importante: cada chamada cria novo objeto para forçar React re-render
+  store.setLocation({ ...loc })
+
   // Reseta alerta de fadiga quando vira o dia
   const today = new Date().toDateString()
   if (gps._lastFatigueDay !== today) {
@@ -47,8 +51,6 @@ function onPosition(pos) {
     gps.lastTripId = tripId
     if (!gps.sessionStartTime) gps.sessionStartTime = ts
   }
-
-  store.setLocation(loc)
 
   // Auto-detecta origem (captura GPS assim que viagem inicia sem endereço)
   if (
