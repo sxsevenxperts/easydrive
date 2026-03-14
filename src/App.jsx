@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useGPS } from './hooks/useGPS'
 import { useTheme } from './hooks/useTheme'
+import { useFatigueAlert } from './hooks/useFatigueAlert'
 import { useStore } from './store'
 import { supabase, checkSubscription, checkIsAdmin } from './lib/supabase'
 import { startPeriodicSync, stopPeriodicSync, fullSync, processQueue } from './lib/sync'
@@ -41,6 +42,7 @@ function MainApp({ sharedRide, user, subscription, onLogout }) {
   const streakNotifiedRef = useRef(null)
   useTheme()
   useGPS()
+  useFatigueAlert()
 
   // Setar userId no store para sync
   useEffect(() => {
