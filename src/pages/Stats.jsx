@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useStore } from '../store'
 import { fmt } from '../utils/format'
 import { calcDailyRecords, calcStreak, calcAchievements } from '../utils/gamification'
+import PDFReport from '../components/PDFReport'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer, Legend, ReferenceLine,
@@ -9,7 +10,7 @@ import {
 import {
   CalendarDays, TrendingUp, Fuel, Clock, Navigation,
   Trophy, Flame, Target, Star, Medal, Zap, Droplet, Plus, Trash2, AlertTriangle,
-  MapPin, ExternalLink,
+  MapPin, ExternalLink, Download,
 } from 'lucide-react'
 
 // ── HOTSPOT HELPERS ──────────────────────────────────────────────
@@ -130,6 +131,9 @@ export default function Stats() {
     partialFill: false,
     notes: '',
   })
+
+  // ── Estado do Relatório PDF ────────────────────────────────────
+  const [showPDFReport, setShowPDFReport] = useState(false)
 
   // Gamificação
   const records = useMemo(() => calcDailyRecords(trips, settings), [trips, settings])
@@ -500,8 +504,8 @@ export default function Stats() {
         const fmtR = (v) => `R$ ${v.toFixed(2).replace('.', ',')}`
         return (
           <>
-            {/* Seletor de período */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            {/* Seletor de período + Botão PDF */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
               {PERIODS.map((pp) => (
                 <button key={pp.id} onClick={() => setPeriod(pp.id)}
                   style={{
@@ -513,6 +517,18 @@ export default function Stats() {
                   }}
                 >{pp.label}</button>
               ))}
+              <button onClick={() => setShowPDFReport(true)}
+                style={{
+                  padding: '7px 14px',
+                  background: '#3b82f620',
+                  border: '1px solid #3b82f6',
+                  borderRadius: 20, color: '#3b82f6',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <Download size={14} /> PDF
+              </button>
             </div>
 
             {/* Veredicto */}
@@ -1318,6 +1334,9 @@ export default function Stats() {
           )}
         </>
       )}
+
+      {/* PDFReport Modal */}
+      <PDFReport isOpen={showPDFReport} onClose={() => setShowPDFReport(false)} trips={trips} expenses={expenses} settings={settings} />
     </div>
   )
 }
