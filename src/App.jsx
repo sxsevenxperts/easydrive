@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useGPS } from './hooks/useGPS'
 import { useTheme } from './hooks/useTheme'
 import { useFatigueAlert } from './hooks/useFatigueAlert'
@@ -27,6 +27,35 @@ import {
   NOTIFY,
 } from './utils/notifications'
 import { calcStreak, calcAchievements } from './utils/gamification'
+
+// Simple Error Boundary
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true }
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('Error:', error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ background: '#0f172a', minHeight: '100dvh', color: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, textAlign: 'center', padding: 20 }}>
+          <div style={{ fontSize: 48 }}>⚠️</div>
+          <p style={{ fontSize: 16, fontWeight: 700 }}>Erro na aplicação</p>
+          <p style={{ fontSize: 13, color: '#64748b' }}>Recarregue a página (F5) para tentar novamente</p>
+          <button onClick={() => window.location.reload()} style={{ padding: '10px 20px', background: '#3b82f6', border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, cursor: 'pointer', marginTop: 10 }}>
+            Recarregar
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function getInitialTab() {
   const params = new URLSearchParams(window.location.search)
@@ -166,7 +195,7 @@ function MainApp({ sharedRide, user, subscription, onLogout }) {
   )
 }
 
-export default function App() {
+function AppContent() {
   const [auth, setAuth] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [sharedRide, setSharedRide] = useState(null)
@@ -261,4 +290,12 @@ export default function App() {
   }
 
   return <Login onAuth={handleAuth} />
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  )
 }
