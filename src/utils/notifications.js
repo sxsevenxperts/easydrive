@@ -1,6 +1,8 @@
 // EasyDrive — Sistema de Notificações Push
 // Gerencia permissões, envio e verificação automática de metas/riscos
 
+import { useStore } from '../store'
+
 // ── PERMISSÃO ────────────────────────────────────────────────────
 export async function requestNotificationPermission() {
   if (!('Notification' in window)) return false
@@ -42,14 +44,32 @@ export function sendNotification(title, body, options = {}) {
   }
 }
 
+// ── ADICIONAR ALERT AO STORE (para toast visual) ────────────────────
+// Chamado pelos NOTIFY métodos para exibir toast no app
+export function addToastAlert(title, message, type = 'info', duration = 5000) {
+  try {
+    useStore.getState().addAlert({
+      title,
+      message,
+      type,
+      duration,
+    })
+  } catch {
+    // Store não carregado ou não disponível
+  }
+}
+
 // ── TIPOS DE ALERTA ──────────────────────────────────────────────
 export const NOTIFY = {
   // ✅ Meta alcançada
-  goalReached: (label, value) => sendNotification(
-    `✅ Meta Alcançada! — ${label}`,
-    `Você atingiu ${value}! Continue assim! 🎉`,
-    { tag: `goal-reached-${label}`, requireInteraction: false }
-  ),
+  goalReached: (label, value) => {
+    sendNotification(
+      `✅ Meta Alcançada! — ${label}`,
+      `Você atingiu ${value}! Continue assim! 🎉`,
+      { tag: `goal-reached-${label}`, requireInteraction: false }
+    )
+    addToastAlert(`✅ Meta Alcançada!`, `${label}: ${value}`, 'success')
+  },
 
   // ⚠️ Meta em risco
   goalAtRisk: (label, current, target, pct) => sendNotification(
@@ -66,11 +86,14 @@ export const NOTIFY = {
   ),
 
   // 🔴 Prejuízo (combustível > ganhos)
-  loss: (fuelCost, earnings) => sendNotification(
-    `🔴 ATENÇÃO: Você está no prejuízo!`,
-    `Combustível (${fuelCost}) está maior que ganhos (${earnings}). Considere pausar.`,
-    { tag: 'loss-alert', requireInteraction: true, vibrate: [500, 200, 500, 200, 500] }
-  ),
+  loss: (fuelCost, earnings) => {
+    sendNotification(
+      `🔴 ATENÇÃO: Você está no prejuízo!`,
+      `Combustível (${fuelCost}) está maior que ganhos (${earnings}). Considere pausar.`,
+      { tag: 'loss-alert', requireInteraction: true, vibrate: [500, 200, 500, 200, 500] }
+    )
+    addToastAlert('🔴 Prejuízo Detectado!', `Combustível (${fuelCost}) > Ganhos (${earnings})`, 'error', 7000)
+  },
 
   // 🟡 Prejuízo potencial (custo alto por km)
   highCostWarning: (costPerKm) => sendNotification(
@@ -87,18 +110,24 @@ export const NOTIFY = {
   ),
 
   // 🏆 Conquista desbloqueada
-  achievement: (title, desc) => sendNotification(
-    `🏆 Conquista desbloqueada: ${title}`,
-    desc,
-    { tag: `achievement-${title}` }
-  ),
+  achievement: (title, desc) => {
+    sendNotification(
+      `🏆 Conquista desbloqueada: ${title}`,
+      desc,
+      { tag: `achievement-${title}` }
+    )
+    addToastAlert(`🏆 Conquista!`, title, 'achievement')
+  },
 
   // 🚨 Segurança
-  safetyAlert: (message) => sendNotification(
-    `🚨 Alerta de Segurança`,
-    message,
-    { tag: 'safety-alert', requireInteraction: true, vibrate: [500, 200, 500] }
-  ),
+  safetyAlert: (message) => {
+    sendNotification(
+      `🚨 Alerta de Segurança`,
+      message,
+      { tag: 'safety-alert', requireInteraction: true, vibrate: [500, 200, 500] }
+    )
+    addToastAlert(`🚨 Segurança`, message, 'error', 7000)
+  },
 
   // 🔧 Manutenção próxima
   maintenanceReminder: (title, daysLeft) => sendNotification(

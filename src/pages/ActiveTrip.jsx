@@ -45,6 +45,7 @@ export default function ActiveTrip({ sharedRide }) {
   const [detectedRide,   setDetectedRide]   = useState(sharedRide || null)
   const [showPasteModal, setShowPasteModal] = useState(false)
   const [pasteText,      setPasteText]      = useState('')
+  const [detectedPrice,  setDetectedPrice]  = useState(sharedRide?.value || null)  // Preço auto-detectado
   const lastClipRef = useRef('')
   const [monitoring, setMonitoring] = useState(false)
 
@@ -71,7 +72,21 @@ export default function ActiveTrip({ sharedRide }) {
       if (!text || text === lastClipRef.current) return
       lastClipRef.current = text
       const parsed = parseRideText(text)
-      if (parsed) { setDetectedRide(parsed); if (parsed.platform) setPlatform(parsed.platform) }
+      if (parsed) {
+        setDetectedRide(parsed)
+        if (parsed.platform) setPlatform(parsed.platform)
+        // Auto-detecta o preço da corrida
+        if (parsed.value) {
+          setDetectedPrice(parsed.value)
+          // Toast notificando preço detectado
+          useStore.getState().addAlert({
+            title: '✅ Preço detectado!',
+            message: `${parsed.platform?.toUpperCase()}: R$ ${parsed.value.toFixed(2).replace('.', ',')}`,
+            type: 'success',
+            duration: 4000,
+          })
+        }
+      }
     } catch {}
   }, [])
 
@@ -156,11 +171,31 @@ export default function ActiveTrip({ sharedRide }) {
 
   const handlePasteSubmit = () => {
     const parsed = parseRideText(pasteText)
-    if (parsed) { setDetectedRide(parsed); setShowPasteModal(false); setPasteText('') }
+    if (parsed) {
+      setDetectedRide(parsed)
+      if (parsed.value) {
+        setDetectedPrice(parsed.value)
+      }
+      setShowPasteModal(false)
+      setPasteText('')
+    }
   }
 
   const handleFinish = () => {
-    const value = parseFloat(earningsInput.replace(',', '.')) || 0
+    // Usa earnings input se preenchido, senão usa preço detectado
+    let value = 0
+    if (earningsInput) {
+      value = parseFloat(earningsInput.replace(',', '.')) || 0
+    } else if (detectedPrice) {
+      value = detectedPrice
+      // Notifica que usou preço detectado
+      useStore.getState().addAlert({
+        title: '✅ Usando preço detectado',
+        message: `R$ ${detectedPrice.toFixed(2).replace('.', ',')}`,
+        type: 'success',
+        duration: 3000,
+      })
+    }
     finishTrip(value)
     setEarningsInput(''); setShowFinish(false); setDestQuery(''); setDestResults([])
     setRouteInfo(null)
@@ -602,7 +637,10 @@ export default function ActiveTrip({ sharedRide }) {
         }
         <ActionBtn
           color='#3b82f6' flex={2}
-          onClick={() => setShowFinish(true)}
+          onClick={() => {
+            setShowFinish(true)
+            setEarningsInput('')  // Limpa input para mostrar auto-detect se disponível
+          }}
           icon={<Square size={17} />}
           label='Finalizar Corrida'
         />
@@ -633,16 +671,34 @@ export default function ActiveTrip({ sharedRide }) {
               )}
             </div>
           )}
-          <SectionLabel icon='💰'>Valor recebido pela corrida</SectionLabel>
+          <SectionLabel icon='💰'>
+            Valor recebido pela corrida
+            {detectedPrice && (
+              <span style={{ fontSize: 11, color: '#22c55e', marginLeft: 8, fontWeight: 400 }}>
+                ✅ (Detectado: R$ {detectedPrice.toFixed(2).replace('.', ',')})
+              </span>
+            )}
+          </SectionLabel>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
             <span style={{ color: '#22c55e', fontSize: 22, fontWeight: 800 }}>R$</span>
             <input
-              type='number' value={earningsInput}
+              type='number'
+              value={earningsInput || (detectedPrice ? detectedPrice.toFixed(2).replace('.', ',') : '')}
               onChange={(e) => setEarningsInput(e.target.value)}
-              placeholder='0,00' autoFocus
+              placeholder={detectedPrice ? detectedPrice.toFixed(2).replace('.', ',') : '0,00'}
+              autoFocus
               style={{ ...inputStyle, margin: 0, flex: 1, fontSize: 24, fontWeight: 800, color: '#22c55e' }}
             />
           </div>
+          {detectedPrice && !earningsInput && (
+            <div style={{ background: '#22c55e12', border: '1px solid #22c55e30', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14 }}>✅</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 13, color: '#22c55e', fontWeight: 700 }}>Preço detectado automaticamente</p>
+                <p style={{ fontSize: 11, color: 'var(--text3)' }}>Pressione enter ou confirme para usar o valor auto-detectado</p>
+              </div>
+            </div>
+          )}
           {earningsInput && (
             <div style={{ background: '#22c55e12', border: '1px solid #22c55e30', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
               <p style={{ fontSize: 13, color: 'var(--text2)' }}>

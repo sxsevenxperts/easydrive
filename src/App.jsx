@@ -5,6 +5,7 @@ import { useStore } from './store'
 import { supabase, checkSubscription, checkIsAdmin } from './lib/supabase'
 import { startPeriodicSync, stopPeriodicSync, fullSync, processQueue } from './lib/sync'
 import NavBar from './components/NavBar'
+import AlertToast from './components/AlertToast'
 import Dashboard from './pages/Dashboard'
 import ActiveTrip from './pages/ActiveTrip'
 import History from './pages/History'
@@ -153,6 +154,9 @@ function MainApp({ sharedRide, user, subscription, onLogout }) {
             CNPJ 32.794.007/0001-19
           </p>
         </div>
+
+        {/* Toast Notifications */}
+        <AlertToast />
 
         <NavBar active={tab} onTab={setTab} />
       </div>
