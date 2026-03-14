@@ -43,6 +43,11 @@ export default function ActiveTrip({ sharedRide }) {
   const [platform,         setPlatform]          = useState('uber')
   const [showAllPlatforms, setShowAllPlatforms]  = useState(false)
 
+  // Despesas Rápidas
+  const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [expenseType,      setExpenseType]      = useState(null)
+  const [expenseValue,     setExpenseValue]     = useState('')
+
   // Clipboard / Share
   const [detectedRide,   setDetectedRide]   = useState(sharedRide || null)
   const [showPasteModal, setShowPasteModal] = useState(false)
@@ -519,22 +524,10 @@ export default function ActiveTrip({ sharedRide }) {
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6,
             }}>
-              <QuickExpenseBtn icon='🚧' label='Pedágio' onClick={() => {
-                const v = prompt('Valor (R$):', '10')
-                if (v) addQuickExpense('pedágio', v)
-              }} />
-              <QuickExpenseBtn icon='🅿️' label='Estac.' onClick={() => {
-                const v = prompt('Valor (R$):', '10')
-                if (v) addQuickExpense('estacionamento', v)
-              }} />
-              <QuickExpenseBtn icon='🍔' label='Lanche' onClick={() => {
-                const v = prompt('Valor (R$):', '15')
-                if (v) addQuickExpense('lanche', v)
-              }} />
-              <QuickExpenseBtn icon='⚙️' label='Outro' onClick={() => {
-                const v = prompt('Valor (R$):', '0')
-                if (v) addQuickExpense('outro', v)
-              }} />
+              <QuickExpenseBtn icon='🚧' label='Pedágio' onClick={() => { setExpenseType({ type: 'pedágio', label: 'Pedágio', default: '10' }); setShowExpenseModal(true) }} />
+              <QuickExpenseBtn icon='🅿️' label='Estac.' onClick={() => { setExpenseType({ type: 'estacionamento', label: 'Estacionamento', default: '10' }); setShowExpenseModal(true) }} />
+              <QuickExpenseBtn icon='🍔' label='Lanche' onClick={() => { setExpenseType({ type: 'lanche', label: 'Lanche', default: '15' }); setShowExpenseModal(true) }} />
+              <QuickExpenseBtn icon='⚙️' label='Outro' onClick={() => { setExpenseType({ type: 'outro', label: 'Outro', default: '0' }); setShowExpenseModal(true) }} />
             </div>
           </div>
         </div>
@@ -753,6 +746,61 @@ export default function ActiveTrip({ sharedRide }) {
             : []
         }
       />
+
+      {/* Modal de Despesa Rápida */}
+      {showExpenseModal && expenseType && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-end', zIndex: 9999,
+        }} onClick={() => setShowExpenseModal(false)}>
+          <div style={{
+            width: '100%', background: 'var(--bg)', borderRadius: '20px 20px 0 0',
+            padding: '20px 16px 32px', boxShadow: '0 -4px 24px rgba(0,0,0,0.3)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', marginBottom: 16, textAlign: 'center' }}>
+              {expenseType.label}
+            </h3>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              <input
+                type='number' placeholder={`Padrão: R$ ${expenseType.default}`}
+                value={expenseValue} onChange={(e) => setExpenseValue(e.target.value)}
+                style={{
+                  flex: 1, padding: '12px 14px', background: 'var(--bg3)',
+                  border: '1px solid var(--border)', borderRadius: 10,
+                  color: 'var(--text)', fontSize: 15, outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+              <span style={{ fontSize: 18, fontWeight: 800, alignSelf: 'center' }}>R$</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowExpenseModal(false)}
+                style={{
+                  flex: 1, padding: '12px', background: 'var(--bg3)', border: '1px solid var(--border)',
+                  borderRadius: 10, color: 'var(--text2)', fontWeight: 700, cursor: 'pointer',
+                }}
+              >Cancelar</button>
+              <button onClick={() => {
+                const val = parseFloat(expenseValue || expenseType.default)
+                if (val > 0) {
+                  addQuickExpense(expenseType.type, val)
+                  useStore.getState().addAlert({
+                    title: `✅ ${expenseType.label} adicionado`,
+                    message: `R$ ${val.toFixed(2).replace('.', ',')}`,
+                    type: 'success', duration: 3000,
+                  })
+                  setExpenseValue('')
+                  setShowExpenseModal(false)
+                }
+              }}
+                style={{
+                  flex: 1, padding: '12px', background: '#22c55e', border: 'none',
+                  borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer',
+                }}
+              >Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
