@@ -4,6 +4,7 @@ import { useTimer } from '../hooks/useTimer'
 import { fmt } from '../utils/format'
 import SafetyCard from '../components/SafetyCard'
 import RouteMap from '../components/RouteMap'
+import SOSModal from '../components/SOSModal'
 import { reverseGeocode } from '../utils/safety'
 import { parseRideText, PLATFORM_LIST } from '../utils/rideParser'
 import { fetchRoutes, rankRoutes, getTrafficInfo, fmtDist } from '../utils/routing'
@@ -38,6 +39,7 @@ export default function ActiveTrip({ sharedRide }) {
 
   const [earningsInput,    setEarningsInput]    = useState('')
   const [showFinish,       setShowFinish]        = useState(false)
+  const [showSOS,          setShowSOS]           = useState(false)
   const [platform,         setPlatform]          = useState('uber')
   const [showAllPlatforms, setShowAllPlatforms]  = useState(false)
 
@@ -629,6 +631,32 @@ export default function ActiveTrip({ sharedRide }) {
         <SafetyCard />
       </div>
 
+      {/* SOS Emergência */}
+      <button
+        onClick={() => setShowSOS(true)}
+        style={{
+          width: '100%', padding: '14px',
+          background: 'linear-gradient(135deg, #dc2626, #991b1b)',
+          border: 'none', borderRadius: 12,
+          color: '#fff', fontWeight: 800, fontSize: 15,
+          cursor: 'pointer', marginBottom: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          boxShadow: '0 0 20px #ef444480',
+          transition: 'all 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.transform = 'scale(1.02)'
+          e.target.style.boxShadow = '0 0 24px #ef4444'
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = 'scale(1)'
+          e.target.style.boxShadow = '0 0 20px #ef444480'
+        }}
+      >
+        <AlertTriangle size={18} />
+        🚨 SOS EMERGÊNCIA
+      </button>
+
       {/* Controles */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
         {tripStatus === 'trip'
@@ -712,6 +740,19 @@ export default function ActiveTrip({ sharedRide }) {
           </div>
         </BottomSheet>
       )}
+
+      {/* Modal SOS */}
+      <SOSModal
+        isOpen={showSOS}
+        onClose={() => setShowSOS(false)}
+        currentLocation={currentLocation}
+        emergencyContact={settings.emergencyContact}
+        otherContacts={
+          settings.emergencyContact?.phone && settings.emergencyContact?.name
+            ? [{ name: settings.emergencyContact.name, phone: settings.emergencyContact.phone }]
+            : []
+        }
+      />
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
