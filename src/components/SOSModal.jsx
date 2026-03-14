@@ -216,7 +216,7 @@ export default function SOSModal({ isOpen, onClose, currentLocation, emergencyCo
                   style={{
                     width: '100%',
                     padding: '20px',
-                    background: sosType === '190' ? '#dc2626' : '#ef4444',
+                    background: sosType === '190' ? '#f87171' : '#ef4444',
                     border: 'none',
                     borderRadius: 16,
                     color: '#fff',
@@ -272,7 +272,7 @@ export default function SOSModal({ isOpen, onClose, currentLocation, emergencyCo
                   style={{
                     width: '100%',
                     padding: '20px',
-                    background: sosType === '192' ? '#dc2626' : '#ef4444',
+                    background: sosType === '192' ? '#7f1d1d' : '#991b1b',
                     border: 'none',
                     borderRadius: 16,
                     color: '#fff',
