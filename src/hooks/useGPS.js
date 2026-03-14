@@ -5,11 +5,23 @@ import { analyzeSafety, calcDistance, calcSpeed, reverseGeocode } from '../utils
 const MOVING_THRESHOLD = 5
 const SAFETY_INTERVAL = 60_000
 const GEOCODE_INTERVAL = 15_000
+const FATIGUE_CHECK_INTERVAL = 60_000
+const FATIGUE_THRESHOLD_MIN = 360  // 6 horas em minutos
 
 // Singleton — GPS roda fora do ciclo React, lê/escreve store via getState()
 let gpsStarted = false
 let wakeLock = null
-const gps = { watchId: null, lastSafety: 0, lastGeo: 0, lastPt: null, totalKm: 0, lastTripId: null }
+const gps = {
+  watchId: null,
+  lastSafety: 0,
+  lastGeo: 0,
+  lastFatigueCheck: 0,
+  lastPt: null,
+  totalKm: 0,
+  lastTripId: null,
+  sessionStartTime: null,
+  fatigueAlertedToday: false,
+}
 
 async function requestWakeLock() {
   try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen') } catch {}
@@ -21,11 +33,19 @@ function onPosition(pos) {
   const loc = { lat, lon, accuracy, ts }
   const store = useStore.getState()
 
+  // Reseta alerta de fadiga quando vira o dia
+  const today = new Date().toDateString()
+  if (gps._lastFatigueDay !== today) {
+    gps._lastFatigueDay = today
+    gps.fatigueAlertedToday = false
+  }
+
   // Reseta km quando viagem nova começa
   const tripId = store.activeTrip?.id
   if (tripId && tripId !== gps.lastTripId) {
     gps.totalKm = 0
     gps.lastTripId = tripId
+    if (!gps.sessionStartTime) gps.sessionStartTime = ts
   }
 
   store.setLocation(loc)
@@ -85,6 +105,31 @@ function onPosition(pos) {
           })
       }
     })
+  }
+
+  // Verificar fadiga (alerta a cada 1 min, mas notifica apenas uma vez por dia)
+  if (ts - gps.lastFatigueCheck > FATIGUE_CHECK_INTERVAL && store.tripStatus === 'trip') {
+    gps.lastFatigueCheck = ts
+    if (gps.sessionStartTime) {
+      const drivingMinutes = Math.round((ts - gps.sessionStartTime) / 60_000)
+      const fatigueAlertHours = store.settings?.fatigueAlertHours ?? 6
+      const fatigueThreshold = fatigueAlertHours * 60
+
+      if (drivingMinutes >= fatigueThreshold && !gps.fatigueAlertedToday) {
+        gps.fatigueAlertedToday = true
+        const s = useStore.getState()
+        s.addAlert({
+          type: 'warning',
+          title: '⏰ Alerta de fadiga',
+          body: `Você está dirigindo há ${fatigueAlertHours}h+ — repouso recomendado`,
+          duration: 8000,
+        })
+        if (Notification.permission === 'granted')
+          new Notification('EasyDrive — Alerta de Fadiga', {
+            body: `Você dirigiu ${fatigueAlertHours}+ horas. Descanse!`,
+          })
+      }
+    }
   }
 }
 
