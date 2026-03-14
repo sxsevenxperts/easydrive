@@ -1,283 +1,211 @@
 import { useEffect, useRef, useState } from 'react'
-import { Crosshair } from 'lucide-react'
+import { Crosshair, Navigation } from 'lucide-react'
 
-// ─── Mapa de rota em tempo real ─────────────────────────────────────────────
-// Leaflet + OpenStreetMap (gratuito, sem API key)
-// Suporta: GPS em tempo real, rota planejada OSRM, alternativas, legenda
+// ─── Integração com Waze (melhor que mapa customizado) ──────────────────
+// Waze: navegação em tempo real, trânsito, roteamento inteligente
+// Suporta: deep links, URL share, navegação nativa
 
 export default function RouteMap({
-  route          = [],   // trilha GPS percorrida [{lat, lon}]
-  currentLocation,       // posição atual do motorista
-  pickupLocation,        // origem
-  destination,           // destino
-  plannedRoutes  = [],   // rotas OSRM rankeadas [{points, isRecommended, ...}]
+  route          = [],
+  currentLocation,
+  pickupLocation,
+  destination,
+  plannedRoutes  = [],
   height         = 240,
-  navigating     = false, // true = viagem em andamento → não dá fitBounds (GPS segue)
+  navigating     = false,
 }) {
-  const mapRef             = useRef(null)
-  const instanceRef        = useRef(null)
-  const trailRef           = useRef(null)       // trilha GPS percorrida
-  const routePolylinesRef  = useRef([])         // polilinhas das rotas planejadas
-  const markerCurrentRef   = useRef(null)
-  const markerPickupRef    = useRef(null)
-  const markerDestRef      = useRef(null)
-  const currentLocationRef = useRef(currentLocation)
-  const [following, setFollowing] = useState(true)
-  const [mapReady, setMapReady]   = useState(false)  // sinaliza que Leaflet carregou
-  const followingRef              = useRef(true)
-  useEffect(() => { followingRef.current = following }, [following])
+  const mapRef = useRef(null)
+  const [wazeUrl, setWazeUrl] = useState('')
 
-  // Ref sempre atualizado (evita stale closure no init async)
-  useEffect(() => { currentLocationRef.current = currentLocation }, [currentLocation])
-
-  // ── Init: carrega Leaflet uma única vez ─────────────────────────────────
+  // ── Gera link Waze ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (instanceRef.current || !mapRef.current) return
+    if (!destination?.lat || !destination?.lon) return
 
-    import('leaflet').then((L) => {
-      if (!mapRef.current) return
+    // Deep link Waze: waze://navigate?to=lat,lon
+    const wazeDeepLink = `waze://navigate?to=${destination.lat},${destination.lon}`
 
-      // CSS do Leaflet (injeção única)
-      if (!document.getElementById('leaflet-css')) {
-        const link = document.createElement('link')
-        link.id   = 'leaflet-css'
-        link.rel  = 'stylesheet'
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-        document.head.appendChild(link)
-      }
+    // URL fallback para web (abre mapa Waze web)
+    const wazeWebUrl = `https://waze.com/ul?ll=${destination.lat},${destination.lon}&navigate=yes`
 
-      const map = L.map(mapRef.current, { zoomControl: false, attributionControl: false })
+    setWazeUrl(wazeDeepLink)
 
-      // Tiles OpenStreetMap
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
-
-      // Ícones
-      const makeIcon = (color, size, rotate = false) =>
-        L.divIcon({
-          html: `<div style="
-            width:${size}px;height:${size}px;
-            border-radius:${rotate ? '3px' : '50%'};
-            background:${color};border:2px solid #fff;
-            box-shadow:0 2px 8px ${color}88;
-            transform:${rotate ? 'rotate(45deg)' : 'none'};
-          "></div>`,
-          className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-        })
-
-      const currentIcon = L.divIcon({
-        html: `<div style="
-          width:20px;height:20px;border-radius:50%;
-          background:#3b82f6;border:3px solid #fff;
-          box-shadow:0 0 0 5px #3b82f655;
-        "></div>`,
-        className: '', iconSize: [20, 20], iconAnchor: [10, 10],
-      })
-
-      instanceRef.current = {
-        map, L,
-        currentIcon,
-        pickupIcon: makeIcon('#22c55e', 14),
-        destIcon:   makeIcon('#ef4444', 16, true),
-      }
-
-      setMapReady(true)   // dispara os effects que dependem do mapa
-
-      // Posição inicial via ref (já pode ter GPS)
-      const loc = currentLocationRef.current
-      if (loc?.lat) {
-        map.setView([loc.lat, loc.lon], 15)
-        markerCurrentRef.current = L.marker(
-          [loc.lat, loc.lon],
-          { icon: currentIcon, zIndexOffset: 1000 }
-        ).addTo(map)
-      } else {
-        navigator.geolocation?.getCurrentPosition(
-          ({ coords }) => {
-            if (!instanceRef.current) return
-            map.setView([coords.latitude, coords.longitude], 15)
-          },
-          () => map.setView([-14.235, -51.925], 5),
-          { enableHighAccuracy: false, timeout: 5_000, maximumAge: 60_000 }
-        )
-      }
-
-      // Quando usuário arrasta o mapa → desativa "seguir GPS"
-      map.on('dragstart', () => setFollowing(false))
-    })
-
-    return () => {
-      instanceRef.current?.map.remove()
-      instanceRef.current = null
-    }
-  }, [])
-
-  // ── Atualiza posição atual ──────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || !instanceRef.current || !currentLocation) return
-    const { map, L, currentIcon } = instanceRef.current
-
-    if (!markerCurrentRef.current) {
-      markerCurrentRef.current = L.marker(
-        [currentLocation.lat, currentLocation.lon],
-        { icon: currentIcon, zIndexOffset: 1000 }
-      ).addTo(map)
-    } else {
-      markerCurrentRef.current.setLatLng([currentLocation.lat, currentLocation.lon])
+    // Fallback se Waze app não está instalado
+    const openWaze = () => {
+      window.location.href = wazeDeepLink
+      // Após 1 segundo, se app não abriu, abre web
+      setTimeout(() => {
+        window.open(wazeWebUrl, '_blank')
+      }, 1000)
     }
 
-    if (following) {
-      map.panTo([currentLocation.lat, currentLocation.lon], { animate: true, duration: 0.6 })
+    // Se navegating, abre Waze automaticamente
+    if (navigating && destination?.lat) {
+      openWaze()
     }
-  }, [currentLocation, following, mapReady])
-
-  // ── Trilha GPS percorrida ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || !instanceRef.current || route.length < 2) return
-    const { map, L } = instanceRef.current
-    const latlngs = route.map((p) => [p.lat, p.lon])
-
-    if (!trailRef.current) {
-      trailRef.current = L.polyline(latlngs, {
-        color: '#22c55e', weight: 3, opacity: 0.7,
-        dashArray: '6, 4', lineJoin: 'round',
-      }).addTo(map)
-    } else {
-      trailRef.current.setLatLngs(latlngs)
-    }
-  }, [route, mapReady])
-
-  // ── Rotas planejadas (OSRM) ─────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || !instanceRef.current) return
-    const { map, L } = instanceRef.current
-
-    // Limpa polilinhas antigas
-    routePolylinesRef.current.forEach((pl) => pl.remove())
-    routePolylinesRef.current = []
-
-    if (!plannedRoutes?.length) return
-
-    // Alternativas primeiro (ficam embaixo), recomendada por último (fica em cima)
-    const sorted = [...plannedRoutes].reverse()
-
-    sorted.forEach((route) => {
-      const isRec = route.isRecommended
-      const pl = L.polyline(route.points, {
-        color:     isRec ? '#3b82f6' : '#94a3b8',
-        weight:    isRec ? 5 : 3,
-        opacity:   isRec ? 0.90 : 0.45,
-        dashArray: isRec ? null : '10, 8',
-        lineJoin:  'round',
-      }).addTo(map)
-      routePolylinesRef.current.push(pl)
-    })
-
-    // Ajusta zoom para mostrar rota completa, mas NÃO durante navegação ativa
-    const rec = plannedRoutes.find((r) => r.isRecommended) ?? plannedRoutes[0]
-    if (rec?.points?.length && (!navigating || !followingRef.current)) {
-      try {
-        map.fitBounds(rec.points, { padding: [40, 40], maxZoom: 16 })
-      } catch {}
-    }
-  }, [plannedRoutes, mapReady, navigating])
-
-  // ── Marcador de origem ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || !instanceRef.current || !pickupLocation?.lat) return
-    const { map, L, pickupIcon } = instanceRef.current
-
-    if (!markerPickupRef.current) {
-      markerPickupRef.current = L.marker(
-        [pickupLocation.lat, pickupLocation.lon],
-        { icon: pickupIcon }
-      ).bindPopup('<b style="font-size:13px">📍 Origem</b>').addTo(map)
-    } else {
-      markerPickupRef.current.setLatLng([pickupLocation.lat, pickupLocation.lon])
-    }
-  }, [pickupLocation?.lat, pickupLocation?.lon, mapReady])
-
-  // ── Marcador de destino ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || !instanceRef.current || !destination?.lat) return
-    const { map, L, destIcon } = instanceRef.current
-
-    if (!markerDestRef.current) {
-      markerDestRef.current = L.marker(
-        [destination.lat, destination.lon],
-        { icon: destIcon }
-      ).bindPopup('<b style="font-size:13px">🏁 Destino</b>').addTo(map)
-    } else {
-      markerDestRef.current.setLatLng([destination.lat, destination.lon])
-    }
-
-    // Sem rota OSRM ainda: ajusta zoom para mostrar origem + destino
-    if (!plannedRoutes?.length && markerPickupRef.current && instanceRef.current) {
-      const { map: m, L: Lx } = instanceRef.current
-      try {
-        const bounds = Lx.latLngBounds(
-          [pickupLocation?.lat ?? destination.lat, pickupLocation?.lon ?? destination.lon],
-          [destination.lat, destination.lon]
-        )
-        m.fitBounds(bounds, { padding: [40, 40] })
-      } catch {}
-    }
-  }, [destination?.lat, destination?.lon, mapReady])
-
-  // ── Botão "Localizar" ──────────────────────────────────────────────────
-  const handleLocate = () => {
-    if (!instanceRef.current || !currentLocation) return
-    instanceRef.current.map.setView(
-      [currentLocation.lat, currentLocation.lon], 16,
-      { animate: true, duration: 0.8 }
-    )
-    setFollowing(true)
-  }
+  }, [destination?.lat, destination?.lon, navigating])
 
   return (
-    <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative', boxShadow: '0 4px 24px #0008' }}>
-      <div ref={mapRef} style={{ height, width: '100%', background: 'var(--bg3)' }} />
-
-      {/* Botão localizar */}
-      <button
-        onClick={handleLocate}
-        title='Centralizar na minha posição'
+    <div
+      ref={mapRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height,
+        borderRadius: 12,
+        overflow: 'hidden',
+        background: '#1a1a2e',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {/* Preview com informações de rota */}
+      <div
         style={{
-          position: 'absolute', top: 10, right: 10, zIndex: 1000,
-          width: 36, height: 36, borderRadius: 10,
-          background: following ? '#3b82f6' : 'var(--bg2,#1e293b)',
-          border: `1px solid ${following ? '#3b82f6' : 'var(--border,#334155)'}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', boxShadow: '0 2px 8px #0004',
-          transition: 'all 0.2s',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+          zIndex: 1,
         }}
       >
-        <Crosshair size={16} color={following ? '#fff' : '#94a3b8'} />
-      </button>
+        <div style={{ textAlign: 'center', color: '#fff' }}>
+          <Navigation size={48} style={{ marginBottom: 12, opacity: 0.7 }} />
 
-      {/* Legenda */}
-      <div style={{
-        position: 'absolute', bottom: 10, left: 10, zIndex: 1000,
-        background: '#0f172aee', borderRadius: 10, padding: '6px 12px',
-        display: 'flex', gap: 12, backdropFilter: 'blur(4px)',
-        border: '1px solid #ffffff10',
-      }}>
-        <LegendDot color='#22c55e' label='Origem' />
-        <LegendDot color='#3b82f6' label={following ? 'Você ●' : 'Você'} />
-        {destination && <LegendDot color='#ef4444' label='Destino' />}
-        {plannedRoutes?.length > 0 && <LegendDot color='#3b82f6' label='Rota' line />}
+          {destination ? (
+            <>
+              <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>
+                📍 Navegando para:
+              </p>
+              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 16px', maxWidth: 200 }}>
+                {destination.address || `${destination.lat.toFixed(4)}, ${destination.lon.toFixed(4)}`}
+              </p>
+
+              {/* Distância e tempo estimado */}
+              {plannedRoutes?.[0] && (
+                <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginBottom: 16 }}>
+                  <div>
+                    <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>Distância</p>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: '#3b82f6', margin: '4px 0 0' }}>
+                      {plannedRoutes[0].distanceKm} km
+                    </p>
+                  </div>
+                  <div style={{ width: 1, background: '#334155' }} />
+                  <div>
+                    <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>Tempo</p>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: '#10b981', margin: '4px 0 0' }}>
+                      {plannedRoutes[0].durationMin} min
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Botão Abrir Waze */}
+              <button
+                onClick={() => {
+                  const wazeDeepLink = `waze://navigate?to=${destination.lat},${destination.lon}`
+                  const wazeWeb = `https://waze.com/ul?ll=${destination.lat},${destination.lon}&navigate=yes`
+                  window.location.href = wazeDeepLink
+                  setTimeout(() => window.open(wazeWeb, '_blank'), 1000)
+                }}
+                style={{
+                  padding: '12px 20px',
+                  background: '#00bcd4',
+                  border: 'none',
+                  borderRadius: 8,
+                  color: '#fff',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 14,
+                }}
+              >
+                🗺️ Abrir em Waze
+              </button>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 14, color: '#94a3b8' }}>
+                Selecione um destino para começar
+              </p>
+              <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+                O mapa será exibido quando você definir o destino
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* Indicador de localização atual */}
+        {currentLocation?.lat && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 12,
+              right: 12,
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              background: '#3b82f6',
+              border: '3px solid #fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 0 5px #3b82f655',
+              animation: 'pulse 2s infinite',
+            }}
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#fff',
+              }}
+            />
+          </div>
+        )}
       </div>
-    </div>
-  )
-}
 
-function LegendDot({ color, label, line }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-      {line
-        ? <div style={{ width: 16, height: 3, background: color, borderRadius: 2 }} />
-        : <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
-      }
-      <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>{label}</span>
+      {/* Rota planejada (resumo visual) */}
+      {plannedRoutes?.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            background: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(10px)',
+            padding: '8px 12px',
+            borderRadius: 8,
+            fontSize: 12,
+            color: '#fff',
+            zIndex: 10,
+          }}
+        >
+          <p style={{ margin: 0, fontWeight: 700, color: '#3b82f6' }}>
+            ✨ {plannedRoutes[0].label}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94a3b8' }}>
+            {plannedRoutes[0].traffic.label}
+          </p>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { box-shadow: 0 0 0 5px #3b82f655; }
+          50% { box-shadow: 0 0 0 10px #3b82f630; }
+        }
+      `}</style>
     </div>
   )
 }
