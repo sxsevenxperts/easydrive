@@ -99,7 +99,7 @@ function startGPS() {
   gps.watchId = navigator.geolocation.watchPosition(
     onPosition,
     (err) => console.warn('GPS:', err.message),
-    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 3_000 }
+    { enableHighAccuracy: true, timeout: 5_000, maximumAge: 0 }
   )
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') requestWakeLock()

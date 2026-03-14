@@ -114,6 +114,7 @@ export async function fetchRoutes(originLat, originLon, destLat, destLon) {
 /**
  * Classifica rotas por pontuação combinada:
  * tempo (40%) + custo combustível (35%) + segurança (25%)
+ * Em áreas perigosas (score < 50), segurança sobe para 40%
  * Retorna rotas ordenadas da melhor para a pior.
  */
 export function rankRoutes(routes, fuelPrice, fuelConsumption, safetyScore = 60) {
@@ -122,6 +123,12 @@ export function rankRoutes(routes, fuelPrice, fuelConsumption, safetyScore = 60)
   const traffic = getTrafficInfo()
   const maxDist = Math.max(...routes.map((r) => r.distanceKm))
   const maxTime = Math.max(...routes.map((r) => r.durationMin))
+
+  // Em áreas perigosas, aumenta peso da segurança
+  const isDangerous = safetyScore < 50
+  const weights = isDangerous
+    ? { time: 0.35, cost: 0.25, safety: 0.40 }  // Prioriza segurança
+    : { time: 0.40, cost: 0.35, safety: 0.25 }  // Balanço normal
 
   const scored = routes.map((r) => {
     const litros   = fuelConsumption > 0 ? r.distanceKm / fuelConsumption : r.distanceKm * 0.04
@@ -138,7 +145,8 @@ export function rankRoutes(routes, fuelPrice, fuelConsumption, safetyScore = 60)
       fuelCost,
       adjMin,
       traffic,
-      score: Math.round(timeScore * 0.40 + costScore * 0.35 + safeScore * 0.25),
+      isDangerous,
+      score: Math.round(timeScore * weights.time + costScore * weights.cost + safeScore * weights.safety),
       isRecommended: false,
     }
   })
@@ -147,7 +155,7 @@ export function rankRoutes(routes, fuelPrice, fuelConsumption, safetyScore = 60)
 
   const labels = ['✨ Recomendada', 'Alternativa A', 'Alternativa B']
   scored.forEach((r, i) => {
-    r.label        = labels[i] ?? `Rota ${i + 1}`
+    r.label        = isDangerous && i === 0 ? '🛡️ Mais Segura' : labels[i] ?? `Rota ${i + 1}`
     r.isRecommended = i === 0
   })
 

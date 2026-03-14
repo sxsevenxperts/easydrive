@@ -68,6 +68,7 @@ export default function ActiveTrip({ sharedRide }) {
   const [routeLoading, setRouteLoading] = useState(false)
   const [selectedRoute,setSelectedRoute]= useState(0)     // índice da rota selecionada
   const [showNavSteps, setShowNavSteps] = useState(false)
+  const routeDebounceRef = useRef(null)
 
   // Clima
   const [weather, setWeather] = useState(null)
@@ -131,24 +132,46 @@ export default function ActiveTrip({ sharedRide }) {
 
     if (!origin?.lat || !dest?.lat) { setRouteInfo(null); return }
 
-    setRouteLoading(true)
-    fetchRoutes(origin.lat, origin.lon, dest.lat, dest.lon).then((routes) => {
-      if (!routes) { setRouteLoading(false); return }
-      const ranked = rankRoutes(
-        routes,
+    // Debounce para evitar fetch excessivo
+    if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current)
+
+    // Se já temos rotas, apenas re-rank com novo safetyScore
+    if (routeInfo && safetyScore?.score !== undefined) {
+      const reranked = rankRoutes(
+        routeInfo,
         settings.fuelPrice        ?? 6.0,
         settings.fuelConsumption  ?? 35,
         safetyScore?.score        ?? 60,
       )
-      setRouteInfo(ranked)
-      setSelectedRoute(0)
-      setRouteLoading(false)
-    })
+      setRouteInfo(reranked)
+      return
+    }
+
+    setRouteLoading(true)
+    routeDebounceRef.current = setTimeout(() => {
+      fetchRoutes(origin.lat, origin.lon, dest.lat, dest.lon).then((routes) => {
+        if (!routes) { setRouteLoading(false); return }
+        const ranked = rankRoutes(
+          routes,
+          settings.fuelPrice        ?? 6.0,
+          settings.fuelConsumption  ?? 35,
+          safetyScore?.score        ?? 60,
+        )
+        setRouteInfo(ranked)
+        setSelectedRoute(0)
+        setRouteLoading(false)
+      })
+    }, 800)
   }, [
     activeTrip?.pickupLocation?.lat,
+    activeTrip?.pickupLocation?.lon,
     activeTrip?.destination?.lat,
+    activeTrip?.destination?.lon,
     pendingDest?.lat,
-    currentLocation?.lat,
+    pendingDest?.lon,
+    safetyScore?.score,
+    settings.fuelPrice,
+    settings.fuelConsumption,
   ])
 
   const fuelCost = activeTrip
