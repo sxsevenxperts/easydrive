@@ -12,6 +12,7 @@ export default function RouteMap({
   destination,           // destino
   plannedRoutes  = [],   // rotas OSRM rankeadas [{points, isRecommended, ...}]
   height         = 240,
+  navigating     = false, // true = viagem em andamento → não dá fitBounds (GPS segue)
 }) {
   const mapRef             = useRef(null)
   const instanceRef        = useRef(null)
@@ -23,6 +24,8 @@ export default function RouteMap({
   const currentLocationRef = useRef(currentLocation)
   const [following, setFollowing] = useState(true)
   const [mapReady, setMapReady]   = useState(false)  // sinaliza que Leaflet carregou
+  const followingRef              = useRef(true)
+  useEffect(() => { followingRef.current = following }, [following])
 
   // Ref sempre atualizado (evita stale closure no init async)
   useEffect(() => { currentLocationRef.current = currentLocation }, [currentLocation])
@@ -169,14 +172,14 @@ export default function RouteMap({
       routePolylinesRef.current.push(pl)
     })
 
-    // Ajusta zoom para mostrar a rota recomendada completa
+    // Ajusta zoom para mostrar rota completa, mas NÃO durante navegação ativa
     const rec = plannedRoutes.find((r) => r.isRecommended) ?? plannedRoutes[0]
-    if (rec?.points?.length) {
+    if (rec?.points?.length && (!navigating || !followingRef.current)) {
       try {
         map.fitBounds(rec.points, { padding: [40, 40], maxZoom: 16 })
       } catch {}
     }
-  }, [plannedRoutes, mapReady])
+  }, [plannedRoutes, mapReady, navigating])
 
   // ── Marcador de origem ──────────────────────────────────────────────────
   useEffect(() => {

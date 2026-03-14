@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useStore } from '../store'
 import { useTimer } from '../hooks/useTimer'
 import { fmt } from '../utils/format'
@@ -52,6 +52,7 @@ export default function ActiveTrip({ sharedRide }) {
   const [destQuery,    setDestQuery]    = useState('')
   const [destResults,  setDestResults]  = useState([])
   const [destSearching,setDestSearching]= useState(false)
+  const [pendingDest,  setPendingDest]  = useState(null)   // destino antes de iniciar viagem
   const searchTimeout = useRef(null)
 
   // Rotas OSRM
@@ -104,7 +105,7 @@ export default function ActiveTrip({ sharedRide }) {
   // ── Busca rota OSRM quando origem+destino disponíveis ─────────────────
   useEffect(() => {
     const origin = activeTrip?.pickupLocation ?? currentLocation
-    const dest   = activeTrip?.destination
+    const dest   = activeTrip?.destination ?? pendingDest   // usa pendingDest no idle
 
     if (!origin?.lat || !dest?.lat) { setRouteInfo(null); return }
 
@@ -124,6 +125,7 @@ export default function ActiveTrip({ sharedRide }) {
   }, [
     activeTrip?.pickupLocation?.lat,
     activeTrip?.destination?.lat,
+    pendingDest?.lat,
     currentLocation?.lat,
   ])
 
@@ -176,20 +178,27 @@ export default function ActiveTrip({ sharedRide }) {
   }, [])
 
   const handleSelectDest = (result) => {
-    setDestination({
+    const dest = {
       lat: parseFloat(result.lat), lon: parseFloat(result.lon),
       address: result.display_name.split(',').slice(0, 3).join(',').trim(),
-    })
+    }
+    if (tripStatus === 'idle') {
+      // Antes de iniciar: salva localmente para preview de rota no mapa
+      setPendingDest(dest)
+    } else {
+      setDestination(dest)
+    }
     setDestQuery(result.display_name.split(',').slice(0, 2).join(',').trim())
     setDestResults([])
   }
 
   const traffic = getTrafficInfo()
 
-  // Rotas a exibir no mapa (apenas a selecionada ou todas)
-  const mapRoutes = routeInfo
-    ? routeInfo.map((r, i) => ({ ...r, isRecommended: i === selectedRoute }))
-    : []
+  // Rotas a exibir no mapa — useMemo evita recriar a referência a cada render de GPS
+  const mapRoutes = useMemo(
+    () => routeInfo ? routeInfo.map((r, i) => ({ ...r, isRecommended: i === selectedRoute })) : [],
+    [routeInfo, selectedRoute]
+  )
 
   // ══════════════════════════════════════════════════════════════════════
   //  TELA SEM VIAGEM ATIVA
@@ -260,6 +269,18 @@ export default function ActiveTrip({ sharedRide }) {
           onSelect={handleSelectDest}
         />
 
+        {/* Mapa de preview — aparece quando tem GPS ou destino */}
+        {(currentLocation || pendingDest) && (
+          <div style={{ marginBottom: 14 }}>
+            <RouteMap
+              currentLocation={currentLocation}
+              destination={pendingDest}
+              plannedRoutes={mapRoutes}
+              height={pendingDest ? 240 : 180}
+            />
+          </div>
+        )}
+
         {/* Rota sugerida (pré-viagem) */}
         {routeLoading && <LoadingRoute />}
         {routeInfo && <RouteCards routes={routeInfo} selected={selectedRoute} onSelect={setSelectedRoute} fuelPrice={settings.fuelPrice} />}
@@ -280,7 +301,17 @@ export default function ActiveTrip({ sharedRide }) {
         )}
 
         <button
-          onClick={() => { startWaiting(); startTrip(platform) }}
+          onClick={() => {
+            startWaiting()
+            startTrip(platform)
+            if (pendingDest) {
+              // Aplica destino digitado antes de iniciar
+              setTimeout(() => {
+                useStore.getState().setDestination(pendingDest)
+              }, 50)
+              setPendingDest(null)
+            }
+          }}
           style={{
             width: '100%', padding: '18px',
             background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
@@ -434,6 +465,7 @@ export default function ActiveTrip({ sharedRide }) {
           destination={activeTrip?.destination}
           plannedRoutes={mapRoutes}
           height={activeTrip?.destination ? 260 : 220}
+          navigating={tripStatus === 'trip'}
         />
       </div>
 
