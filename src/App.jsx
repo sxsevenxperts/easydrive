@@ -11,9 +11,13 @@ import Chat from './pages/Chat'
 import Billing from './pages/Billing'
 import AdminPanel from './pages/AdminPanel'
 import Login, { SubscriptionExpired } from './pages/Login'
+import { useGPS } from './hooks/useGPS'
 
 function MainApp({ sharedRide, user, subscription, onLogout }) {
   const [tab, setTab] = useState('dashboard')
+
+  // ⚡ Inicia GPS em tempo real quando app é aberto
+  useGPS()
 
   if (tab === 'billing') {
     return (
