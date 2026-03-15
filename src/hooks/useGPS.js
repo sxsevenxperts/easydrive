@@ -135,36 +135,126 @@ function onPosition(pos) {
   }
 }
 
+// Fallback: geolocalização por IP quando GPS nativo falha
+async function fallbackIPLocation() {
+  try {
+    const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(5000) })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.latitude && data.longitude) {
+      return {
+        coords: {
+          latitude: data.latitude,
+          longitude: data.longitude,
+          accuracy: 5000, // ~5km de precisão via IP
+        },
+      }
+    }
+  } catch {}
+  return null
+}
+
+let gpsRetries = 0
+
+function onGPSError(err) {
+  console.warn('GPS error:', err.code, err.message)
+  const store = useStore.getState()
+
+  // Se ainda não temos localização, tenta fallback por IP
+  if (!store.currentLocation) {
+    store.addAlert({
+      type: 'warning',
+      title: '📍 Obtendo localização...',
+      message: err.code === 1
+        ? 'Permita o acesso à localização nas configurações do navegador'
+        : 'GPS lento — usando localização aproximada',
+      duration: 5000,
+    })
+
+    // Fallback por IP
+    fallbackIPLocation().then((pos) => {
+      if (pos) onPosition(pos)
+    })
+  }
+
+  // Retry com configurações mais flexíveis
+  if (gpsRetries < 3) {
+    gpsRetries++
+    setTimeout(() => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { gpsRetries = 0; onPosition(pos) },
+        () => {},
+        { enableHighAccuracy: false, timeout: 15_000, maximumAge: 30_000 }
+      )
+    }, 2000 * gpsRetries)
+  }
+}
+
 function startGPS() {
-  if (gpsStarted || !navigator.geolocation) return
+  if (gpsStarted) return
+  if (!navigator.geolocation) {
+    // Sem suporte a GPS — usa fallback por IP
+    fallbackIPLocation().then((pos) => {
+      if (pos) onPosition(pos)
+    })
+    return
+  }
   gpsStarted = true
 
   if ('Notification' in window && Notification.permission === 'default')
     Notification.requestPermission()
 
   requestWakeLock()
+
+  // Primeira tentativa rápida com cache permitido
+  navigator.geolocation.getCurrentPosition(
+    onPosition,
+    () => {},
+    { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 }
+  )
+
+  // Watch contínuo com alta precisão
   gps.watchId = navigator.geolocation.watchPosition(
     onPosition,
-    (err) => console.warn('GPS:', err.message),
+    onGPSError,
     {
-      enableHighAccuracy: true,  // máxima precisão
-      timeout: 5_000,            // timeout 5s (mais rápido)
-      maximumAge: 0              // sem cache — sempre fresco
+      enableHighAccuracy: true,
+      timeout: 15_000,
+      maximumAge: 5_000,
     }
   )
 
-  // Fallback: força atualização GPS a cada 1s para tempo REAL (máximo refresh)
-  const fallbackId = setInterval(() => {
+  // Fallback: atualização a cada 3s (menos agressivo)
+  setInterval(() => {
     if (!gpsStarted) return
     navigator.geolocation.getCurrentPosition(
       onPosition,
       () => {},
-      { enableHighAccuracy: true, timeout: 2_000, maximumAge: 500 }
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 3_000 }
     )
-  }, 1000)
+  }, 3000)
+
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') requestWakeLock()
+    if (document.visibilityState === 'visible') {
+      requestWakeLock()
+      // Força refresh ao voltar para o app
+      navigator.geolocation.getCurrentPosition(
+        onPosition,
+        () => {},
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
+      )
+    }
   })
+
+  // Fallback por IP se nenhum GPS em 5 segundos
+  setTimeout(() => {
+    const store = useStore.getState()
+    if (!store.currentLocation) {
+      fallbackIPLocation().then((pos) => {
+        if (pos) onPosition(pos)
+      })
+    }
+  }, 5000)
 }
 
 // Hook com apenas 1 useEffect — zero hook de estado, zero conflito de ordem
