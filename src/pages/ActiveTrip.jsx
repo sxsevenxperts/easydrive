@@ -442,9 +442,14 @@ export default function ActiveTrip({ sharedRide }) {
         <button
           onClick={() => {
             startWaiting()
+            // Captura origem do GPS real imediatamente
+            const loc = useStore.getState().currentLocation
+            if (loc?.lat) {
+              const addr = useStore.getState().currentAddress
+              setPickup({ lat: loc.lat, lon: loc.lon, address: addr || `${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)}` })
+            }
             startTrip(platform)
             if (pendingDest) {
-              // Aplica destino digitado antes de iniciar
               setTimeout(() => {
                 useStore.getState().setDestination(pendingDest)
               }, 50)
