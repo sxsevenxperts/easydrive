@@ -446,15 +446,14 @@ export default function ActiveTrip({ sharedRide }) {
             const loc = useStore.getState().currentLocation
             if (loc?.lat) {
               const addr = useStore.getState().currentAddress
-              setPickup({ lat: loc.lat, lon: loc.lon, address: addr || `${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)}` })
+              useStore.getState().setPickup({ lat: loc.lat, lon: loc.lon, address: addr || `${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)}` })
             }
-            startTrip(platform)
+            // Aplica destino ANTES de iniciar (síncrono, Zustand já criou activeTrip)
             if (pendingDest) {
-              setTimeout(() => {
-                useStore.getState().setDestination(pendingDest)
-              }, 50)
+              useStore.getState().setDestination(pendingDest)
               setPendingDest(null)
             }
+            startTrip(platform)
           }}
           style={{
             width: '100%', padding: '18px',
