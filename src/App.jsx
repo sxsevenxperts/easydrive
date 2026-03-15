@@ -66,17 +66,31 @@ export default function App() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return }
 
-    // Check current session
+    // Check current session with timeout
+    const sessionTimeout = setTimeout(() => {
+      setLoading(false)
+    }, 5000)
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         checkSubscription(session.user.id).then(sub => {
+          clearTimeout(sessionTimeout)
           const isAdminUser = session.user.email === 'sevenxpertssxacademy@gmail.com'
           setAuth({ user: session.user, subscription: sub })
           setIsAdmin(isAdminUser)
+          setLoading(false)
+        }).catch(() => {
+          clearTimeout(sessionTimeout)
+          setLoading(false)
         })
+      } else {
+        clearTimeout(sessionTimeout)
+        setLoading(false)
       }
+    }).catch(() => {
+      clearTimeout(sessionTimeout)
       setLoading(false)
-    }).catch(() => setLoading(false))
+    })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
