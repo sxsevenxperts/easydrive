@@ -12,12 +12,19 @@ import Billing from './pages/Billing'
 import AdminPanel from './pages/AdminPanel'
 import Login, { SubscriptionExpired } from './pages/Login'
 import { useGPS } from './hooks/useGPS'
+import PermissionsModal from './components/PermissionsModal'
 
 function MainApp({ sharedRide, user, subscription, onLogout }) {
   const [tab, setTab] = useState('dashboard')
+  const [permsDone, setPermsDone] = useState(false)
 
   // ⚡ Inicia GPS em tempo real quando app é aberto
   useGPS()
+
+  // Modal de permissões na primeira vez
+  if (!permsDone) {
+    return <PermissionsModal onDone={() => setPermsDone(true)} />
+  }
 
   if (tab === 'billing') {
     return (
