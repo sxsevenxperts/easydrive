@@ -64,48 +64,57 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!supabase) { setLoading(false); return }
+    // Always load immediately
+    const init = async () => {
+      if (!supabase) {
+        setLoading(false)
+        return
+      }
 
-    // Check current session with timeout
-    const sessionTimeout = setTimeout(() => {
-      setLoading(false)
-    }, 5000)
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        checkSubscription(session.user.id).then(sub => {
-          clearTimeout(sessionTimeout)
-          const isAdminUser = session.user.email === 'sevenxpertssxacademy@gmail.com'
-          setAuth({ user: session.user, subscription: sub })
-          setIsAdmin(isAdminUser)
-          setLoading(false)
-        }).catch(() => {
-          clearTimeout(sessionTimeout)
-          setLoading(false)
-        })
-      } else {
-        clearTimeout(sessionTimeout)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          try {
+            const sub = await checkSubscription(session.user.id)
+            const isAdminUser = session.user.email === 'sevenxpertssxacademy@gmail.com'
+            setAuth({ user: session.user, subscription: sub })
+            setIsAdmin(isAdminUser)
+          } catch {
+            // Subscription check failed, still allow login
+            const isAdminUser = session.user.email === 'sevenxpertssxacademy@gmail.com'
+            setAuth({ user: session.user, subscription: { active: true, plan: 'premium' } })
+            setIsAdmin(isAdminUser)
+          }
+        }
+      } catch (err) {
+        console.error('Auth init error:', err)
+      } finally {
         setLoading(false)
       }
-    }).catch(() => {
-      clearTimeout(sessionTimeout)
-      setLoading(false)
-    })
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        const sub = await checkSubscription(session.user.id)
-        const isAdminUser = session.user.email === 'sevenxpertssxacademy@gmail.com'
-        setAuth({ user: session.user, subscription: sub })
-        setIsAdmin(isAdminUser)
-      } else if (event === 'SIGNED_OUT') {
-        setAuth(null)
-        setIsAdmin(false)
-      }
-    })
+      // Listen for auth changes
+      const { data: { subscription: listener } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          try {
+            const sub = await checkSubscription(session.user.id)
+            const isAdminUser = session.user.email === 'sevenxpertssxacademy@gmail.com'
+            setAuth({ user: session.user, subscription: sub })
+            setIsAdmin(isAdminUser)
+          } catch {
+            const isAdminUser = session.user.email === 'sevenxpertssxacademy@gmail.com'
+            setAuth({ user: session.user, subscription: { active: true, plan: 'premium' } })
+            setIsAdmin(isAdminUser)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setAuth(null)
+          setIsAdmin(false)
+        }
+      })
 
-    return () => subscription?.unsubscribe()
+      return () => listener?.unsubscribe()
+    }
+
+    init()
   }, [])
 
   const handleAuth = async (result) => {
